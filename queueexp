@@ -1,0 +1,224 @@
+#!/usr/bin/perl
+
+use strict;
+
+use Cwd qw(getcwd abs_path);
+
+# No stdout buffering
+#$| = 1;
+
+# Check arguments and set default paths
+my $runsubpath = 'runs';		# default jobs directory
+my $outsubpath = 'outputs';		# default outputs directory
+my @args = @ARGV;
+while (@args) {
+	my $arg = shift @args;
+	if ($arg eq "-r") {
+		my $next = shift @args;
+		die "Missing value for option -r\n" unless defined $next;
+		print "Overriding runs directory from '$runsubpath' with '$next'\n";
+		$runsubpath = $next;
+	}
+	elsif ($arg eq "-o") {
+		my $next = shift @args;
+		die "Missing value for option -o\n" unless defined $next;
+		print "Overriding output directory from '$outsubpath' with '$next'\n";
+		$outsubpath = $next;
+	}
+	elsif ($arg eq "--help") {
+		my $me = $0 || "queueexp";
+		$me =~ s!.*/!!;
+		print "$me: queue experiments for distributed execution\n";
+		print "\n";
+		print "This is the queue management for runexp. runexp is a system designed to launch\n";
+		print "experiments in several experiment servers using a distributed file system as\n";
+		print "communication medium.\n";
+		print "\n";
+		print "Usage:\n";
+		print "\t$me [-r <run-path>] [-o <output-path>]\n";
+		print "\n";
+		print "\t-r	Specify the directory where jobs should be looked for. Each job\n";
+		print "\t\tis one executable file.\n";
+		print "\t-o	Specify the directory where the job outputs will be written.\n";
+		print "\t\tEach job's standard output is redirected to a single file in\n";
+		print "\t\tthis directory.\n";
+		print "	\n";
+		print "This is a 'works-for-me' kind of system. It works for me, right now, and that's\n";
+		print "currently enough. If it doesn't work for you, that could be because you're not\n";
+		print "me, or maybe you are me in a distant future and you don't remember why you even\n";
+		print "needed this in the first place.\n";
+		print "\n";
+		print "You're currently using an SSH filesystem to establish the distributed file\n";
+		print "system that runexp requires. Go to the experiment server, sshfs to your machine\n";
+		print "and symlink whatever you need. The experiment server should not know it's not\n";
+		print "your workstation.\n";
+		print "\n";
+		print "Once the experiment server is set up, launch the queue manager in your\n";
+		print "workstation, then launch the runners in each experiment server. It should go\n";
+		print "like this:\n";
+		print "\n";
+		print "	\$ queueexp -r runs -o logs\n";
+		print "	\$ ssh user\@experimentserver\n";
+		print "	[...]\n";
+		print "	\$ runexp 8 runs logs\n";
+		print "\n";
+		print "This will run 8 simultaneous jobs in the experiment server.\n";
+		exit;
+	}
+	else {
+		die "Invalid argument '$arg'\n";
+	}
+}
+my $path = getcwd();
+my $runpath = "$path/$runsubpath";
+my $outpath = "$path/$outsubpath";
+my $donetest = "$outpath/runtest.exp";   # optional external program to check if an experiment was run
+
+die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
+# Get all files with extension specified by $ext in the run directory. $ext is a pipe-separated list
+sub getfiles {
+	my $ext = shift;
+	
+	opendir(RUNS, $runpath) or die "Can't open runs directory at $runpath\n";
+	my @files = map "$runpath/$_", grep(/\.($ext)$/, readdir(RUNS));
+	closedir(RUNS);
+
+	return @files;
+}
+
+# Print if request file is empty
+sub printfail {
+	my $host = shift;
+
+	my $time = `date`;
+	chomp $time;
+
+	printf "$time -- [ERROR] $host: request file is empty. Client is stuck\n";
+}	
+
+
+# Print information before running a job
+sub printrun {
+	my $ranpct = shift;
+	my $jobname = shift;
+	my $host = shift;
+
+	my $time = `date`;
+	chomp $time;
+
+	printf "$time -- [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
+}
+
+# Check if a job has already been executed. A job has been executed if its output file contains the string RES: or if
+# a verification application returns 1
+sub donejob {
+	my $jobfile = shift;
+
+	my $jobname = $jobfile;
+	$jobname =~ s{^.+/(.+)\.[^.]+$}{$1};
+	my $resfile = "$outpath/$jobname.res";
+
+	if (-f $donetest) {
+		`'$donetest' '$jobname' '$jobfile' '$resfile'`;
+		return $?;
+	}
+
+	return 0 unless -f $resfile;
+
+	my $done = 0;
+	open OUTFILE, "<$resfile";
+	while (my $line = <OUTFILE>) {
+		if ($line =~ /RES:/) {
+			$done = 1;
+			last;
+		}
+	}
+	close OUTFILE;
+
+	return $done;
+}
+
+my @jobs = sort { $a cmp $b } getfiles('m|sh');
+die "There are no jobs here.\n" unless scalar(@jobs);
+
+my $totaljobs = @jobs;
+my $ranjobs = 0;
+print "There are $totaljobs jobs here.\n";
+
+@jobs = grep(!donejob($_), @jobs);
+my $ranjobs = $totaljobs - @jobs;
+if ($ranjobs > 1) {
+	print "I had previously ran $ranjobs jobs. I will skip them.\n";
+}
+elsif ($ranjobs) {
+	print "I had previously ran one. I will skip it.\n";
+}
+else {
+	print "I did not do anything yet.\n";
+}
+
+unlink "$_" for getfiles("go|req|ready|job|stop");
+
+while (1) {
+	last unless @jobs;
+
+	my @readyflags = getfiles("ready");
+	while (!@readyflags) {
+		sleep 1;
+		@readyflags = getfiles("ready");
+	}
+
+	for my $readyflag (@readyflags) {
+		my $host = $readyflag;
+		$host =~ s!^.*/(.*)\.ready!$1!;
+
+		my $reqfile = $readyflag;
+		$reqfile =~ s/\.ready/.req/;
+
+		open REQFILE, "<$reqfile";
+		my $reqsize = <REQFILE>;
+		chomp $reqsize;
+		close REQFILE;
+
+		unlink $readyflag;
+		unlink $reqfile;
+		if ($reqsize !~ /^\d+$/) {
+			printfail($host);
+			next;
+		}
+
+		my @req;
+		while ($reqsize) {
+			last unless @jobs;
+
+
+			my $nextjob = shift @jobs;
+			my $jobname = $nextjob;
+			$jobname =~ s{^.*/(.*)\..*$}{$1};
+
+			if (donejob($nextjob)) {
+				$ranjobs++;
+				printrun($ranjobs / $totaljobs, $jobname, "SKIPPING");
+			}
+			else {
+				$ranjobs++;
+				printrun($ranjobs / $totaljobs, $jobname, $host);
+				$reqsize--;
+				push @req, $nextjob;
+			}
+		}
+
+		if (@req) {
+			open SERVFILE, ">$runpath/$host.job";
+			print SERVFILE join("\n", @req);
+			close SERVFILE;
+
+			open GOFILE, ">$runpath/$host.go";
+			close GOFILE;
+		}
+	}
+}
+print "All jobs were spawned. Over and out.\n";
+
+open STOPFILE, ">$runpath/master.stop";
+close STOPFILE;

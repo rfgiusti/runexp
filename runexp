@@ -1,0 +1,134 @@
+#!/bin/bash
+
+HOST=$(hostname -s)
+
+SLEEPTIME=1
+
+MAXRUNNERS=$1
+if [[ "$MAXRUNNERS" == "" ]]; then
+	echo "Expected maximum number of jobs for this client"
+	exit
+fi
+if [[ ! $MAXRUNNERS -gt 0 ]]; then
+	echo "Number of runners \"$MAXRUNNERS\" is invalid"
+	exit;
+fi
+
+mypath=`pwd -P`
+runpath="$mypath/runs"
+outpath="$mypath/outputs"
+
+if [[ "$2" != "" ]]; then
+	echo "Overriding runs path to $mypath/$2"
+	runpath="$mypath/$2"
+fi
+if [[ "$3" != "" ]]; then
+	echo "Overriding output path to $mypath/$3"
+	outpath="$mypath/$3"
+fi
+
+if [[ ! -d "$runpath" ]]; then
+	echo "Can't find run path '$runpath'"
+	exit
+fi
+if [[ ! -d "$outpath" ]]; then
+	echo "Can't find output path '$outpath'"
+	exit
+fi
+
+maxfile="$mypath/$HOST.maxrunners"
+
+isover() {
+	if [[ -f "$runpath/master.stop" ]]; then
+		return 0;
+	else
+		return 1;
+	fi
+}
+
+countjobs() {
+	jobs &> /dev/null   #dirty workaround (without this, numjobs may return 1 when should be 0)
+	numjobs=$(jobs | grep -v Done\\\|Concl | wc -l)
+	return $numjobs
+}
+
+echo "I am the experiment runner in $HOST and I'm here to run your jobs"
+rm -f "$progpath/$HOST.req"
+rm -f "$progpath/$HOST.go"
+
+while true; do
+	# Check if there is room for more jobs
+	countjobs
+	activejobs=$?
+	while [[ $activejobs -ge $MAXRUNNERS ]]; do
+		if [[ -f "$maxfile" ]]; then
+			newmax=`cat "$maxfile"`
+			if [[ $newmax -gt 0 ]]; then
+				echo "`date` -- [$HOST] Maximum runners updated from $MAXRUNNERS to $newmax"
+				MAXRUNNERS=$newmax
+				rm "$maxfile"
+			else
+				echo "`date` -- [$HOST] Maximum runners found, but content is invalid:"
+				cat "$maxfile"
+			fi		
+		fi
+		sleep $SLEEPTIME
+		countjobs
+		activejobs=$?
+	done
+
+	# Quit if no more jobs to run are available
+	isover && break
+
+	# Request some jobs
+	requestsize=$(( $MAXRUNNERS - $activejobs ))
+	echo $requestsize > "$runpath/$HOST.req"
+
+	# Attempt to ensure the file is written
+	# TODO: check for race condition here
+	sync
+	echo > "$runpath/$HOST.ready"
+
+	# Wait for permission to go, unless the server suddenly finds out there are no more jobs to run
+	while [[ ! -f "$runpath/$HOST.go" ]]; do
+		sleep 1
+		isover && break
+	done
+	if [[ ! -f "$runpath/$HOST.go" ]]; then
+		echo "`date` -- [$HOST] Scratch that. There are no more jobs to run"
+		break
+	fi
+
+	# Run the received jobs
+	for job in `cat "$runpath/$HOST.job"`; do
+		jobname=`echo -n $job | sed 's!^.*/!!' | sed 's!\.[^.]*$!!'`
+		echo "`date` -- [$HOST] Running $jobname"
+
+		outfile="$outpath/$jobname.res"
+
+		jobtype=`echo -n $job | sed 's!^.*\.!!'`
+		if [[ "$jobtype" == "m" ]]; then
+			nohup matlab -singleCompThread -nodesktop -nosplash < "$job" &> "$outfile" &
+		elif [[ "$jobtype" == "sh" ]]; then
+			nohup bash "$job" &> "$outfile" &
+		else
+			echo "Invalid job type ($jobtype)"
+		fi
+	done
+
+	# Remove the job files
+	rm "$runpath/$HOST.go"
+	rm "$runpath/$HOST.job"
+done
+
+countjobs
+activejobs=$?
+if [[ $activejobs -gt 0 ]]; then
+	echo "`date` -- [$HOST] All spawned. Waiting..."
+fi
+while [[ $activejobs -gt 0 ]]; do
+	sleep 1
+	countjobs
+	activejobs=$?
+done
+echo "`date` -- [$HOST] My work here is done."
