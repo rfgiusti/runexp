@@ -195,6 +195,8 @@ while (1) {
 			my $nextjob = shift @jobs;
 			my $jobname = $nextjob;
 			$jobname =~ s{^.*/(.*)\..*$}{$1};
+			my $jobfile = $nextjob;
+			$jobfile =~ s{^.*/}{};
 
 			if (donejob($nextjob)) {
 				$ranjobs++;
@@ -204,7 +206,7 @@ while (1) {
 				$ranjobs++;
 				printrun($ranjobs / $totaljobs, $jobname, $host);
 				$reqsize--;
-				push @req, $nextjob;
+				push @req, $jobfile;
 			}
 		}
 

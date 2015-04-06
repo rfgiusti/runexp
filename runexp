@@ -105,12 +105,13 @@ while true; do
 		echo "`date` -- [$HOST] Running $jobname"
 
 		outfile="$outpath/$jobname.res"
+		jobfile="$runpath/$job"
 
 		jobtype=`echo -n $job | sed 's!^.*\.!!'`
 		if [[ "$jobtype" == "m" ]]; then
-			nohup matlab -singleCompThread -nodesktop -nosplash < "$job" &> "$outfile" &
+			nohup matlab -singleCompThread -nodesktop -nosplash < "$jobfile" &> "$outfile" &
 		elif [[ "$jobtype" == "sh" ]]; then
-			nohup bash "$job" &> "$outfile" &
+			nohup bash "$jobfile" &> "$outfile" &
 		else
 			echo "Invalid job type ($jobtype)"
 		fi
