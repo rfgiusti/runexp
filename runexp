@@ -1,8 +1,13 @@
 #!/bin/bash
 
 HOST=$(hostname -s)
-
 SLEEPTIME=1
+
+if [[ -f ~/.runexp.conf ]]; then
+	OLDHOST=$HOST
+	source ~/.runexp.conf
+	[[ "$OLDHOST" != "$HOST" ]] && echo "Hostname changed to '$HOST' by ~/.runexp.conf"
+fi
 
 MAXRUNNERS=$1
 if [[ "$MAXRUNNERS" == "" ]]; then
