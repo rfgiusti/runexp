@@ -1,0 +1,193 @@
+#!/usr/bin/perl
+
+use strict;
+
+use Cwd qw(getcwd abs_path);
+use POSIX qw(strftime);
+
+my $runsubpath = 'runs';                # default jobs directory
+if (defined $ARGV[0]) {
+	print "Overriding runs directory from '$runsubpath' with '$ARGV[0]'\n";
+	$runsubpath = $ARGV[0];
+}
+my $path = getcwd();
+my $runpath = "$path/$runsubpath";
+
+# Get all files with extension specified by $ext in the run directory. $ext is a pipe-separated list
+sub getfiles {
+	my $ext = shift;
+
+	opendir(RUNS, $runpath) or die "Can't open runs directory at $runpath\n";
+	my @files = map "$runpath/$_", grep(/\.($ext)$/, readdir(RUNS));
+	closedir(RUNS);
+
+	return @files;
+}
+my @infofiles = getfiles 'info';
+if (!@infofiles) {
+	print "Nothing seems to be running.\n";
+	exit 0;
+}
+my @hostnames = map { my $s = $_; $s =~ s{^.*/|\.[^.]*$}{}g; $s; } @infofiles;
+
+# Get the current UNIX epoch
+my $now = time;
+
+# Check if hosts are alive
+print "Probing host(s) for dead connections...";
+my @alive = ();
+my @dead = ();
+for my $host (@hostnames) {
+	#`ping -c1 $host &> /dev/null`;
+	#my $alive = $? == 0;
+	my $alive = 1;
+	push @alive, $host if $alive;
+	push @dead, $host, if !$alive;
+}
+print "\n";
+
+sub pluralstr {
+	# Return a different string if noun is plural
+	my $test = shift;
+	my $singularform = shift;
+	my $pluralform = shift;
+	return $singularform if !$test || $test == 1;
+	return $pluralform;
+}
+
+sub runtimepart {
+	# Subtract the appropriate number of units and return a proper string
+	my $str = shift;
+	my $diff = shift;
+	my $unit = shift;
+	my $name = shift;
+	my $plural = shift;;
+	my $separator = shift;
+
+	return ($str, $diff) if $diff < $unit;
+
+	my $count = int($diff / $unit);
+	$diff %= $unit;
+	$str = sprintf "$str$count$name%s$separator", pluralstr($count, "", $plural);
+
+	return ($str, $diff);
+}
+
+sub getruntime {
+	# Convert difference of UNIX epoch into readable string
+	my $diff = shift;
+	return "" if $diff < 0;
+	return "just started" if $diff == 0;
+
+	my $SECOND = 1;
+	my $MINUTE = 60;
+	my $HOUR = $MINUTE * 60;
+	my $DAY = $HOUR * 24;
+	my $WEEK = $DAY * 7;
+
+	my $str = "running for ";
+	($str, $diff) = runtimepart($str, $diff, $WEEK, " week", "s", ", ");
+	($str, $diff) = runtimepart($str, $diff, $DAY, " day", "s", ", ");
+	($str, $diff) = runtimepart($str, $diff, $HOUR, "hour", "s", " ");
+	($str, $diff) = runtimepart($str, $diff, $MINUTE, "m", "", "");
+	($str, $diff) = runtimepart($str, $diff, $SECOND, "s", "", "");
+
+	return $str;
+}
+
+sub maphost {
+	my $jobnum = shift;
+	my $jobname = $_[$jobnum * 2];
+	my $startepoch = $_[$jobnum * 2 + 1];
+
+	chomp $jobname;
+	chomp $startepoch;
+
+	my $out = {};
+	$out->{name} = $jobname;
+	$out->{epoch} = $startepoch;
+	$out->{started} = strftime("%a %d/%b %H:%M:%S", localtime($startepoch));
+	$out->{runtime} = getruntime($now - $startepoch);
+	$out->{infuture} = $startepoch > $now;
+	return $out;
+}
+
+sub gatherhostdata {
+	my @hostlist = @_;
+	my $hostdata = {};
+	my $jobs = 0;
+	for my $host (@hostlist) {
+		open FILE, "<$runpath/$host.info";
+		my @data = <FILE>;
+		close FILE;
+
+		my @joblist = map(maphost($_, @data), 0 .. scalar(@data) / 2 - 1);
+		$hostdata->{$host} = [@joblist];
+		
+		$jobs += scalar(@joblist);
+	}
+
+	return ($hostdata, $jobs);
+}
+
+sub getlongestjobname {
+	my $joblist = shift;
+	my $maxlen = 0;
+
+	for my $job (@$joblist) {
+		my $len = length $job->{name}; 
+		$maxlen = $len if $len > $maxlen;
+	}
+
+	return $maxlen;
+}
+
+sub ishostinfuture {
+	my $joblist = shift;
+	for my $job (@$joblist) {
+		return 1 if $job->{infuture};
+	}
+	return 0;
+}
+
+sub printjobs {
+	my $host = shift;
+	my $joblist = shift;
+
+	my $infuture = ishostinfuture($joblist);
+	printf "Job%s running on $host%s%s:\n", 
+		pluralstr(scalar @$joblist, "", "s"),
+		($infuture ? "(warning: start times are in the future)" : "");
+
+	my $maxlen = getlongestjobname($joblist);
+	my @sortedindex = sort { $joblist->[$a]->{epoch} <=> $joblist->[$b]->{epoch} } (0 .. @$joblist - 1);
+	for my $i (@sortedindex) {
+		my $job = $joblist->[$i];
+		printf "  [%s] Job %${maxlen}s", $job->{started}, $job->{name};
+		printf " (%s)", $job->{runtime} unless $infuture;
+		print "\n";
+	}
+}
+
+my ($jobs, $jobcount);
+my ($lostjobs, $lostjobscount);
+
+($jobs, $jobcount) = gatherhostdata(@alive);
+($lostjobs, $lostjobscount) = gatherhostdata(@dead);
+
+if (@alive) {
+	print "Found experiment servers: " . join(" ", @alive) . "\n";
+}
+else {
+	print "It seems that something was running, but all experiment servers are unreacheable.\n";
+}
+print "Unreachable experiment servers: " . join(" ", @dead) . "\n" if @dead;
+
+printf("There %s $jobcount job%s running on %d server%s.\n", pluralstr($jobcount, "is", "are"),
+	pluralstr($jobcount, "", "s"), scalar(@alive), pluralstr(scalar(@alive), "", "s")) if @alive;
+printf("There %s $jobcount job%s running on %d unreacheable server%s.\n", pluralstr($jobcount, "was", "were"),
+	pluralstr($jobcount, "", "s"), scalar(@dead), pluralstr(scalar(@dead), "", "s")) if @dead;
+
+for my $host (@alive) {
+	printjobs($host, $jobs->{$host});
+}
