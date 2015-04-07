@@ -38,9 +38,8 @@ print "Probing host(s) for dead connections...";
 my @alive = ();
 my @dead = ();
 for my $host (@hostnames) {
-	#`ping -c1 $host &> /dev/null`;
-	#my $alive = $? == 0;
-	my $alive = 1;
+	`ping -c1 $host &> /dev/null`;
+	my $alive = $? == 0;
 	push @alive, $host if $alive;
 	push @dead, $host, if !$alive;
 }
@@ -163,7 +162,7 @@ sub printjobs {
 	my @sortedindex = sort { $joblist->[$a]->{epoch} <=> $joblist->[$b]->{epoch} } (0 .. @$joblist - 1);
 	for my $i (@sortedindex) {
 		my $job = $joblist->[$i];
-		printf "  [%s] Job %${maxlen}s", $job->{started}, $job->{name};
+		printf "  [%s] Job %-${maxlen}s", $job->{started}, $job->{name};
 		printf " (%s)", $job->{runtime} unless $infuture;
 		print "\n";
 	}
