@@ -59,7 +59,6 @@ Known limitations
 - Has some overhead due to the need of filesystem synchronization to avoid race conditions
 - Might possibly run into a race condition that will lock the remote server if the network is too slow (this has not
 been observer yet, though; but it is theoretically possible)
-- Uses suboptimal method to launch and keep track of scripts ("but it works!")
 - Failure/success detection is performed by reading the script output, and a particular string pattern is required
 for that (or a custom failure/detection script must be written to read the script output)
 - In case of failure, the script will only be executed if the queue manager and the remote servers are launched again

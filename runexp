@@ -43,6 +43,12 @@ fi
 
 maxfile="$mypath/$HOST.maxrunners"
 
+# Keep track of jobs, one at a time
+pids=()
+jobnames=()
+startimes=()
+runningjobs=0
+
 isover() {
 	if [[ -f "$runpath/master.stop" ]]; then
 		return 0;
@@ -51,21 +57,59 @@ isover() {
 	fi
 }
 
-countjobs() {
-	jobs &> /dev/null   #dirty workaround (without this, numjobs may return 1 when should be 0)
-	numjobs=$(jobs | grep -v Done\\\|Concl | wc -l)
-	return $numjobs
+writerunninginfo() {
+	infofile="$runpath/$HOST.info"
+	echo -n > $infofile
+	i=0
+	while [[ $i < $runningjobs ]]; do
+		echo ${jobnames[$i]} >> $infofile
+		echo ${starttimes[$i]} >> $infofile
+		i=$(( $i + 1 ))
+	done
+	sync
+}
+
+addjob() {
+	pids[$runningjobs]=$1
+	jobnames[$runningjobs]=$2
+	starttimes[$runningjobs]=$( date +%s )
+	runningjobs=$(( $runningjobs + 1 ))
+	writerunninginfo
+}
+
+updaterunningjobs() {
+	from=0
+	to=0
+	removed=0
+	# Walk through list with two pointers, skipping jobs that are done
+	# Array never decreases, but it will always be very small
+	while [[ $from < $runningjobs ]]; do
+		if [[ ! -d /proc/${pids[$from]} ]]; then
+			from=$(( $from + 1 ))
+			removed=$(( $removed + 1 ))
+		fi
+		if [[ $from != $to ]]; then
+			pids[$to]=${pids[$from]}
+			jobnames[$to]=${jobnames[$from]}
+			starttimes[$to]=${starttimes[$from]}
+		fi
+		from=$(( $from + 1 ))
+		to=$(( $to + 1 ))
+	done
+	if [[ $removed > 0 ]]; then
+		runningjobs=$(( $runningjobs - $removed ))
+		writerunninginfo
+	fi
 }
 
 echo "I am the experiment runner in $HOST and I'm here to run your jobs"
 rm -f "$progpath/$HOST.req"
 rm -f "$progpath/$HOST.go"
+rm -f "$progpath/$HOST.info"
 
 while true; do
 	# Check if there is room for more jobs
-	countjobs
-	activejobs=$?
-	while [[ $activejobs -ge $MAXRUNNERS ]]; do
+	while [[ $runningjobs -ge $MAXRUNNERS ]]; do
 		if [[ -f "$maxfile" ]]; then
 			newmax=`cat "$maxfile"`
 			if [[ $newmax -gt 0 ]]; then
@@ -77,16 +121,15 @@ while true; do
 				cat "$maxfile"
 			fi		
 		fi
+		updaterunningjobs
 		sleep $SLEEPTIME
-		countjobs
-		activejobs=$?
 	done
 
 	# Quit if no more jobs to run are available
 	isover && break
 
 	# Request some jobs
-	requestsize=$(( $MAXRUNNERS - $activejobs ))
+	requestsize=$(( $MAXRUNNERS - $runningjobs ))
 	echo $requestsize > "$runpath/$HOST.req"
 
 	# Attempt to ensure the file is written
@@ -115,8 +158,12 @@ while true; do
 		jobtype=`echo -n $job | sed 's!^.*\.!!'`
 		if [[ "$jobtype" == "m" ]]; then
 			nohup matlab -singleCompThread -nodesktop -nosplash < "$jobfile" &> "$outfile" &
+			pid=$!
+			addjob $pid "$jobname"
 		elif [[ "$jobtype" == "sh" ]]; then
 			nohup bash "$jobfile" &> "$outfile" &
+			pid=$!
+			addjob $pid "$jobname"
 		else
 			echo "Invalid job type ($jobtype)"
 		fi
@@ -127,14 +174,12 @@ while true; do
 	rm "$runpath/$HOST.job"
 done
 
-countjobs
-activejobs=$?
-if [[ $activejobs -gt 0 ]]; then
+updaterunningjobs
+if [[ $runningjobs > 0 ]]; then
 	echo "`date` -- [$HOST] All spawned. Waiting..."
+	while [[ $runningjobs > 0 ]]; do
+		sleep $SLEEPTIME
+		updaterunningjobs
+	done
 fi
-while [[ $activejobs -gt 0 ]]; do
-	sleep 1
-	countjobs
-	activejobs=$?
-done
 echo "`date` -- [$HOST] My work here is done."
