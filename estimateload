@@ -12,14 +12,13 @@ loadpct=$(( 100 * $load / $loadmax ))
 # Estimate the number of processes running
 running=$(cat /proc/loadavg | sed 's/ .*//' | sed 's/\..*//' | sed 's/^0\+//')
 [[ "$running" == "" ]] && running="0"
-running=$(( $running + 1 ))
 processors="$(cat /proc/cpuinfo | grep processor | wc -l)"
 
-echo -n "$HOST: approx. $loadpct% load "
+echo -n "$HOST: approx. $loadpct% load (running: $running, capacity: $processors"
 if [[ $loadpct -gt 100 ]]; then
-	echo "(overloaded)"
-elif [[ $running -ge $processors ]]; then
-	echo "(balanced)"
+	echo ", overloaded)"
+elif [[ $(( $running + 1 )) -ge $processors ]]; then
+	echo ", balanced)"
 else
-	echo "(could run $(( $processors - $running )) more)"
+	echo ", could run $(( $processors - $running )) more)"
 fi
