@@ -61,7 +61,7 @@ writerunninginfo() {
 	infofile="$runpath/$HOST.info"
 	echo -n > $infofile
 	i=0
-	while [[ $i < $runningjobs ]]; do
+	while [[ $i -lt $runningjobs ]]; do
 		echo ${jobnames[$i]} >> $infofile
 		echo ${starttimes[$i]} >> $infofile
 		i=$(( $i + 1 ))
@@ -74,7 +74,6 @@ addjob() {
 	jobnames[$runningjobs]=$2
 	starttimes[$runningjobs]=$( date +%s )
 	runningjobs=$(( $runningjobs + 1 ))
-	writerunninginfo
 }
 
 updaterunningjobs() {
@@ -83,7 +82,7 @@ updaterunningjobs() {
 	removed=0
 	# Walk through list with two pointers, skipping jobs that are done
 	# Array never decreases, but it will always be very small
-	while [[ $from < $runningjobs ]]; do
+	while [[ $from -lt $runningjobs ]]; do
 		if [[ ! -d /proc/${pids[$from]} ]]; then
 			from=$(( $from + 1 ))
 			removed=$(( $removed + 1 ))
@@ -168,6 +167,8 @@ while true; do
 			echo "Invalid job type ($jobtype)"
 		fi
 	done
+
+	writerunninginfo
 
 	# Remove the job files
 	rm "$runpath/$HOST.go"
