@@ -1,0 +1,25 @@
+#!/bin/bash
+
+HOST=$( hostname -s )
+[[ -f ~/.runexp.conf ]] && source ~/.runexp.conf
+
+# Estimate the CPU load of this host
+load=$(cat /proc/loadavg | sed 's/ .*//' | sed 's/\.//' | sed 's/^0\+//')
+[[ "$load" == "" ]] && load="0"
+loadmax="$(cat /proc/cpuinfo | grep processor | wc -l)00"
+loadpct=$(( 100 * $load / $loadmax ))
+
+# Estimate the number of processes running
+running=$(cat /proc/loadavg | sed 's/ .*//' | sed 's/\..*//' | sed 's/^0\+//')
+[[ "$running" == "" ]] && running="0"
+running=$(( $running + 1 ))
+processors="$(cat /proc/cpuinfo | grep processor | wc -l)"
+
+echo -n "$HOST: approx. $loadpct% load "
+if [[ $loadpct -ge 100 ]]; then
+	echo "(overloaded)"
+elif [[ $running -eq $processors ]]; then
+	echo "(balanced)"
+else
+	echo "(could run $(( $processors - $running )) more)"
+fi

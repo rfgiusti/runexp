@@ -1,0 +1,12 @@
+#!/bin/bash
+
+localhost=$(hostname -s)
+
+for host in $(cat ~/.runexp.hostlist); do
+	if [[ "$host" != "$localhost" ]]; then
+		ssh $host estimateload 2> /dev/null
+		[[ $? -ne 0 ]] && echo "$host seems to be down"
+	else
+		estimateload
+	fi
+done
