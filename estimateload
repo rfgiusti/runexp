@@ -16,9 +16,9 @@ running=$(( $running + 1 ))
 processors="$(cat /proc/cpuinfo | grep processor | wc -l)"
 
 echo -n "$HOST: approx. $loadpct% load "
-if [[ $loadpct -ge 100 ]]; then
+if [[ $loadpct -gt 100 ]]; then
 	echo "(overloaded)"
-elif [[ $running -eq $processors ]]; then
+elif [[ $running -ge $processors ]]; then
 	echo "(balanced)"
 else
 	echo "(could run $(( $processors - $running )) more)"
