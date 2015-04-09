@@ -87,7 +87,7 @@ sub getruntime {
 	my $str = "running for ";
 	($str, $diff) = runtimepart($str, $diff, $WEEK, " week", "s", ", ");
 	($str, $diff) = runtimepart($str, $diff, $DAY, " day", "s", ", ");
-	($str, $diff) = runtimepart($str, $diff, $HOUR, "hour", "s", " ");
+	($str, $diff) = runtimepart($str, $diff, $HOUR, " hour", "s", " ");
 	($str, $diff) = runtimepart($str, $diff, $MINUTE, "m", "", "");
 	($str, $diff) = runtimepart($str, $diff, $SECOND, "s", "", "");
 
