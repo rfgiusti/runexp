@@ -156,11 +156,11 @@ while true; do
 
 		jobtype=`echo -n $job | sed 's!^.*\.!!'`
 		if [[ "$jobtype" == "m" ]]; then
-			nohup matlab -singleCompThread -nodesktop -nosplash < "$jobfile" &> "$outfile" &
+			matlab -singleCompThread -nodesktop -nosplash < "$jobfile" &> "$outfile" & disown -h
 			pid=$!
 			addjob $pid "$jobname"
 		elif [[ "$jobtype" == "sh" ]]; then
-			nohup bash "$jobfile" &> "$outfile" &
+			bash "$jobfile" &> "$outfile" & disown -h
 			pid=$!
 			addjob $pid "$jobname"
 		else
