@@ -57,7 +57,7 @@ Known limitations
 
 - Requires that a distributed filesystem is present
 - Has some overhead due to the need of filesystem synchronization to avoid race conditions
-- Might possibly run into a race condition that will lock the remote server if the network is too slow (this has not
+- *Might possibly perhaps* (yeah, I said that) run into a race condition that will lock the remote server if the network is too slow (this has not
 been observer yet, though; but it is theoretically possible)
 - Failure/success detection is performed by reading the script output, and a particular string pattern is required
 for that (or a custom failure/detection script must be written to read the script output)
