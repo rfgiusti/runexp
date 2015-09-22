@@ -75,6 +75,7 @@ my $outpath = "$path/$outsubpath";
 my $donetest = "$outpath/runtest.exp";   # optional external program to check if an experiment was run
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
+
 # Get all files with extension specified by $ext in the run directory. $ext is a pipe-separated list
 sub getfiles {
 	my $ext = shift;
@@ -147,11 +148,13 @@ print "There are $totaljobs jobs here.\n";
 
 @jobs = grep(!donejob($_), @jobs);
 my $ranjobs = $totaljobs - @jobs;
-if ($ranjobs > 1) {
-	print "I had previously ran $ranjobs jobs. I will skip them.\n";
+if (!@jobs) {
+	print "I have already run everything. Nothing else to do here.\n";
+	exit;
 }
 elsif ($ranjobs) {
-	print "I had previously ran one. I will skip it.\n";
+	printf "I have already run $ranjobs job%s. I will skip them.\n", ($ranjobs > 1 ? "s" : "");
+	printf "I now have " . (scalar @jobs) . " job%s to run.\n", (@jobs > 1 ? "s" : "");
 }
 else {
 	print "I did not do anything yet.\n";
