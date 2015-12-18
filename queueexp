@@ -10,6 +10,7 @@ use Cwd qw(getcwd abs_path);
 # Check arguments and set default paths
 my $runsubpath = 'runs';		# default jobs directory
 my $outsubpath = 'outputs';		# default outputs directory
+my $printjobs = 0;
 my @args = @ARGV;
 while (@args) {
 	my $arg = shift @args;
@@ -24,6 +25,9 @@ while (@args) {
 		die "Missing value for option -o\n" unless defined $next;
 		print "Overriding output directory from '$outsubpath' with '$next'\n";
 		$outsubpath = $next;
+	}
+	elsif ($arg eq "--print-jobs") {
+		$printjobs = 1;
 	}
 	elsif ($arg eq "--help") {
 		my $me = $0 || "queueexp";
@@ -42,6 +46,8 @@ while (@args) {
 		print "\t-o	Specify the directory where the job outputs will be written.\n";
 		print "\t\tEach job's standard output is redirected to a single file in\n";
 		print "\t\tthis directory.\n";
+		print "\t--print-left\n";
+		print "\t	Print remaining jobs and quit.\n";
 		print "	\n";
 		print "This is a 'works-for-me' kind of system. It works for me, right now, and that's\n";
 		print "currently enough. If it doesn't work for you, that could be because you're not\n";
@@ -129,7 +135,7 @@ sub donejob {
 	my $done = 0;
 	open OUTFILE, "<$resfile";
 	while (my $line = <OUTFILE>) {
-		if ($line =~ /RES:/) {
+		if ($line =~ /RES:/ && $line !~ /RES:\s*fail/) {
 			$done = 1;
 			last;
 		}
@@ -158,6 +164,11 @@ elsif ($ranjobs) {
 }
 else {
 	print "I did not do anything yet.\n";
+}
+
+if ($printjobs) {
+	print join("\n", @jobs) . "\n";
+	exit 0;
 }
 
 unlink "$_" for getfiles("go|req|ready|job|stop");
