@@ -129,11 +129,22 @@ while true; do
 
 	# Request some jobs
 	requestsize=$(( $MAXRUNNERS - $runningjobs ))
+	
+	# TODO: remove this ugly workaround
+	while [[ -f "$runpath/$HOST.req" ]]; do
+		# Request file should have been removed by the experiment
+		# runner. Why am I still seeing it?
+		sleep 1;
+	done
 	echo $requestsize > "$runpath/$HOST.req"
 
 	# Attempt to ensure the file is written
 	# TODO: check for race condition here
+	# TODO: remove this ugly workaround
 	sync
+	while [[ -f "$runpath/$HOST.ready" ]]; do
+		sleep 1;
+	done
 	echo > "$runpath/$HOST.ready"
 
 	# Wait for permission to go, unless the server suddenly finds out there are no more jobs to run
