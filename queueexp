@@ -11,6 +11,7 @@ use Cwd qw(getcwd abs_path);
 my $runsubpath = 'runs';		# default jobs directory
 my $outsubpath = 'outputs';		# default outputs directory
 my $printjobs = 0;
+my $randomize = 0;			# randomize jobs
 my @args = @ARGV;
 while (@args) {
 	my $arg = shift @args;
@@ -29,6 +30,9 @@ while (@args) {
 	elsif ($arg eq "--print-jobs") {
 		$printjobs = 1;
 	}
+	elsif ($arg eq "--random") {
+		$randomize = 1;
+	}
 	elsif ($arg eq "--help") {
 		my $me = $0 || "queueexp";
 		$me =~ s!.*/!!;
@@ -46,6 +50,8 @@ while (@args) {
 		print "\t-o	Specify the directory where the job outputs will be written.\n";
 		print "\t\tEach job's standard output is redirected to a single file in\n";
 		print "\t\tthis directory.\n";
+		print "\t--random\n";
+		print "\t       Run jobs in random order instead of directory listing order.\n";
 		print "\t--print-left\n";
 		print "\t	Print remaining jobs and quit.\n";
 		print "	\n";
@@ -145,6 +151,26 @@ sub donejob {
 	return $done;
 }
 
+
+sub randomizejobs {
+	my $list = shift;
+	my $numjobs = scalar (@$list);
+	my $numshuffled = 0;
+
+	while ($numshuffled < $numjobs) {
+		# Randomly selects a job from the non-shuffled block
+		my $pick = int(rand($numjobs - $numshuffled));
+
+		# Moves to the end of the non-shuffled block, which will be the first new shuffled job
+		$numshuffled++;
+		my $moveto = $numjobs - $numshuffled;
+		my $aux = $list->[$moveto];
+		$list->[$moveto] = $list->[$pick];
+		$list->[$pick] = $aux;
+	}
+}
+
+
 my @jobs = sort { $a cmp $b } getfiles('m|sh');
 die "There are no jobs here.\n" unless scalar(@jobs);
 
@@ -165,6 +191,8 @@ elsif ($ranjobs) {
 else {
 	print "I did not do anything yet.\n";
 }
+
+randomizejobs(\@jobs) if $randomize;
 
 if ($printjobs) {
 	print join("\n", @jobs) . "\n";
