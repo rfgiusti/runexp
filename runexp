@@ -165,13 +165,16 @@ while true; do
 		outfile="$outpath/$jobname.res"
 		jobfile="$runpath/$job"
 
+		echo "`date` [$HOST] -- running $jobname" &> "$outfile"
+		echo "" &>> "$outfile"
+
 		jobtype=`echo -n $job | sed 's!^.*\.!!'`
 		if [[ "$jobtype" == "m" ]]; then
-			matlab -singleCompThread -nodesktop -r "addpath('$runpath'); $jobname; quit;" &> "$outfile" & disown -h
+			matlab -singleCompThread -nodesktop -r "addpath('$runpath'); $jobname; quit;" &>> "$outfile" & disown -h
 			pid=$!
 			addjob $pid "$jobname"
 		elif [[ "$jobtype" == "sh" ]]; then
-			bash "$jobfile" &> "$outfile" & disown -h
+			bash "$jobfile" &>> "$outfile" & disown -h
 			pid=$!
 			addjob $pid "$jobname"
 		else
