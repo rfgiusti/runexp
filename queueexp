@@ -99,6 +99,39 @@ sub getfiles {
 	return @files;
 }
 
+# Get the directories that have job files
+sub gettree {
+	my $root = shift;
+	my $ext = shift;
+	my @result = ();
+
+	print "Entered $root\n";
+
+	opendir CHILDREN, $root or die "Can't open directory at $root\n";
+	my @children = readdir(CHILDREN);
+	closedir CHILDREN;
+
+	print join("\n", @children) . "\n";
+
+	my @dirs = grep(-d "$root/$_" && !m/^\.\.?$/, @children);
+	my @jobs = grep(-f "$root/$_" && m/\.($ext)$/, @children);
+
+	print "Dirs:\n" . join("\n", @dirs) . "\n";
+	print "Jobs:\n" . join("\n", @jobs) . "\n";
+
+	for my $subdir (@dirs) {
+		my @subresult = gettree("$root/$subdir", $ext);
+		if (scalar(@subresult) > 0) {
+			push @result, @subresult;
+		}
+	}
+	if (scalar(@jobs)) {
+		push @result, $root;
+	}
+
+	return @result;
+}
+
 # Print if request file is empty
 sub printfail {
 	my $host = shift;
@@ -170,6 +203,16 @@ sub randomizejobs {
 	}
 }
 
+# Search for jobs in the runpath and its sub directories, checks if all required directories
+# exist in the ouput path as well
+my @tree = gettree($runpath, 'm|sh');
+for my $subdir (@tree) {
+	# Remove the run path from the directory name, search for the required directory in
+	# the outputs dir
+	my $outputdir = $subdir;
+	$outputdir =~ s{^$runpath/}{};
+	die "Output directory $outpath/$outputdir not found\n" unless -d "$outpath/$outputdir";
+}
 
 my @jobs = sort { $a cmp $b } getfiles('m|sh');
 die "There are no jobs here.\n" unless scalar(@jobs);
