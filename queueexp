@@ -202,13 +202,8 @@ die "Outputs directory not found in $outpath\n" unless -d $outpath;
 
 # Search for jobs in the runpath and its sub directories, checks if all required directories
 # exist in the ouput path as well
-print "$runpath\n";
-print "$outpath\n";
-
 my @tree = gettree($runpath, 'm|sh');
 my @jobs = ();
-print "TREE:\n";
-print join("\n", @tree) . "\n";
 for my $subdir (@tree) {
 	# Remove the run path from the directory name, search for the required directory in
 	# the outputs dir
@@ -237,7 +232,14 @@ else {
 	print "I did not do anything yet.\n";
 }
 
-randomizejobs(\@jobs) if $randomize;
+# Job list may or may not be sorted. Do not assume anything. Unless option --randomize is supplied,
+# then the list should be sorted.
+if ($randomize) {
+	randomizejobs(\@jobs) if $randomize;
+}
+else {
+	@jobs = sort { $a cmp $b } @jobs;
+}
 
 if ($printjobs) {
 	print join("\n", @jobs) . "\n";
