@@ -43,7 +43,7 @@ while (@args) {
 		print "communication medium.\n";
 		print "\n";
 		print "Usage:\n";
-		print "\t$me [-r <run-path>] [-o <output-path>]\n";
+		print "\t$me [OPTION]\n";
 		print "\n";
 		print "\t-r	Specify the directory where jobs should be looked for. Each job\n";
 		print "\t\tis one executable file.\n";
@@ -105,19 +105,12 @@ sub gettree {
 	my $ext = shift;
 	my @result = ();
 
-	print "Entered $root\n";
-
 	opendir CHILDREN, $root or die "Can't open directory at $root\n";
 	my @children = readdir(CHILDREN);
 	closedir CHILDREN;
 
-	print join("\n", @children) . "\n";
-
 	my @dirs = grep(-d "$root/$_" && !m/^\.\.?$/, @children);
 	my @jobs = grep(-f "$root/$_" && m/\.($ext)$/, @children);
-
-	print "Dirs:\n" . join("\n", @dirs) . "\n";
-	print "Jobs:\n" . join("\n", @jobs) . "\n";
 
 	for my $subdir (@dirs) {
 		my @subresult = gettree("$root/$subdir", $ext);
@@ -202,6 +195,9 @@ sub randomizejobs {
 		$list->[$pick] = $aux;
 	}
 }
+
+die "Runs directory not found in $runpath\n" unless -d $runpath;
+die "Outputs directory not found in $outpath\n" unless -d $outpath;
 
 # Search for jobs in the runpath and its sub directories, checks if all required directories
 # exist in the ouput path as well
