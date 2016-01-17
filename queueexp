@@ -88,12 +88,13 @@ my $donetest = "$outpath/runtest.exp";   # optional external program to check if
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
 
-# Get all files with extension specified by $ext in the run directory. $ext is a pipe-separated list
+# Get all files with extension specified by $ext in the specified directory. $ext is a pipe-separated list
 sub getfiles {
+	my $dir = shift;
 	my $ext = shift;
 	
-	opendir(RUNS, $runpath) or die "Can't open runs directory at $runpath\n";
-	my @files = map "$runpath/$_", grep(/\.($ext)$/, readdir(RUNS));
+	opendir(RUNS, $dir) or die "Can't open runs directory at $dir\n";
+	my @files = map "$dir/$_", grep(/\.($ext)$/, readdir(RUNS));
 	closedir(RUNS);
 
 	return @files;
@@ -201,16 +202,21 @@ die "Outputs directory not found in $outpath\n" unless -d $outpath;
 
 # Search for jobs in the runpath and its sub directories, checks if all required directories
 # exist in the ouput path as well
+print "$runpath\n";
+print "$outpath\n";
+
 my @tree = gettree($runpath, 'm|sh');
+my @jobs = ();
+print "TREE:\n";
+print join("\n", @tree) . "\n";
 for my $subdir (@tree) {
 	# Remove the run path from the directory name, search for the required directory in
 	# the outputs dir
 	my $outputdir = $subdir;
-	$outputdir =~ s{^$runpath/}{};
+	$outputdir =~ s{^$runpath/?}{};
 	die "Output directory $outpath/$outputdir not found\n" unless -d "$outpath/$outputdir";
+	push @jobs, getfiles($subdir, 'm|sh');
 }
-
-my @jobs = sort { $a cmp $b } getfiles('m|sh');
 die "There are no jobs here.\n" unless scalar(@jobs);
 
 my $totaljobs = @jobs;
