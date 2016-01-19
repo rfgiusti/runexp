@@ -12,9 +12,20 @@ my $runsubpath = 'runs';		# default jobs directory
 my $outsubpath = 'outputs';		# default outputs directory
 my $printjobs = 0;
 my $randomize = 0;			# randomize jobs
+my $basedir = undef;
+my $stopparsing = 0;
 my @args = @ARGV;
 while (@args) {
 	my $arg = shift @args;
+
+	if ($stopparsing) {
+		# A previous -- was supplied. So no more arguments should be parsed. The only valid option
+		# is the basedir. And it must be defined only once.
+		die "Invalid argument '$arg'\n" if defined $basedir;
+		$basedir = $arg;
+		next;
+	}
+	
 	if ($arg eq "-r") {
 		my $next = shift @args;
 		die "Missing value for option -r\n" unless defined $next;
@@ -36,52 +47,77 @@ while (@args) {
 	elsif ($arg eq "--help") {
 		my $me = $0 || "queueexp";
 		$me =~ s!.*/!!;
-		print "$me: queue experiments for distributed execution\n";
-		print "\n";
-		print "This is the queue management for runexp. runexp is a system designed to launch\n";
-		print "experiments in several experiment servers using a distributed file system as\n";
-		print "communication medium.\n";
-		print "\n";
-		print "Usage:\n";
-		print "\t$me [-r <run-path>] [-o <output-path>]\n";
-		print "\n";
-		print "\t-r	Specify the directory where jobs should be looked for. Each job\n";
-		print "\t\tis one executable file.\n";
-		print "\t-o	Specify the directory where the job outputs will be written.\n";
-		print "\t\tEach job's standard output is redirected to a single file in\n";
-		print "\t\tthis directory.\n";
-		print "\t--random\n";
-		print "\t       Run jobs in random order instead of directory listing order.\n";
-		print "\t--print-left\n";
-		print "\t	Print remaining jobs and quit.\n";
-		print "	\n";
-		print "This is a 'works-for-me' kind of system. It works for me, right now, and that's\n";
-		print "currently enough. If it doesn't work for you, that could be because you're not\n";
-		print "me, or maybe you are me in a distant future and you don't remember why you even\n";
-		print "needed this in the first place.\n";
-		print "\n";
-		print "You're currently using an SSH filesystem to establish the distributed file\n";
-		print "system that runexp requires. Go to the experiment server, sshfs to your machine\n";
-		print "and symlink whatever you need. The experiment server should not know it's not\n";
-		print "your workstation.\n";
-		print "\n";
-		print "Once the experiment server is set up, launch the queue manager in your\n";
-		print "workstation, then launch the runners in each experiment server. It should go\n";
-		print "like this:\n";
-		print "\n";
-		print "	\$ queueexp -r runs -o logs\n";
-		print "	\$ ssh user\@experimentserver\n";
-		print "	[...]\n";
-		print "	\$ runexp 8 runs logs\n";
-		print "\n";
-		print "This will run 8 simultaneous jobs in the experiment server.\n";
+		print "$me: queue experiments for distributed execution
+
+This is the queue management for runexp. runexp is a system designed to launch
+experiments in several experiment servers using a distributed file system as
+communication medium.
+
+Usage:
+	$me [<BASEDIR>] [OPTIONS]
+
+	<BASEDIR>  Specify where runexp should look for the jobs and  outputs
+		   directory. If ommitted, the current working directory is
+		   used. This does not change the current working directory.
+	-r <RUNPATH>
+		   Specify the directory where jobs should be looked for. Each
+		   job either a .m or a .sh file. The default value for this
+		   option is <BASEDIR>/runs
+	-o <OUTPUTPATH>
+		   Specify the directory where the job outputs will be written.
+		   When executed, the standard output and the standard error
+		   output will be redicted to a file in this directory. The
+		   default value for this option is <BASEDIR>/outputs
+	--random   Run jobs in random order instead of lexicographical order.
+	--print-jobs
+		   Print remaining jobs and quit.
+	
+This is a 'works-for-me' kind of system. It works for me, right now, and that's
+currently enough. If it doesn't work for you, that could be because you're not
+me, or maybe you are me in a distant future and you don't remember why you even
+needed this in the first place.
+
+You're currently using an SSH filesystem to establish the distributed file
+system that runexp requires. Go to the experiment server, sshfs to your machine
+and symlink whatever you need. The experiment server should not know it's not
+your workstation.
+
+Once the experiment server is set up, launch the queue manager in your
+workstation, then launch the runners in each experiment server. It should go
+like this:
+
+	\$ queueexp -r runs -o logs
+	\$ ssh user\@experimentserver
+	[...]
+	\$ runexp 8 runs logs
+
+This will run 8 simultaneous jobs in the experiment server.
+";
 		exit;
+	}
+	elsif ($arg eq "--") {
+		# Stop parsing arguments
+		$stopparsing = 1;
+	}
+	elsif ($arg !~ /^-/) {
+		# If something that does not start with a dash is supplied, we assume it is the base
+		# directory. Unless it has already been supplied.
+		die "Invalid argument '$arg'\n" if defined $basedir;
+		$basedir = $arg;
+		print "Overriding base directory from './' with '$basedir'\n";
 	}
 	else {
 		die "Invalid argument '$arg'\n";
 	}
 }
-my $path = getcwd();
+my $path;
+if (defined $basedir) {
+	$path = abs_path($basedir);
+}
+else {
+	$path = abs_path(getcwd());
+}
+$path =~ s{/$}{};
 my $runpath = "$path/$runsubpath";
 my $outpath = "$path/$outsubpath";
 my $donetest = "$outpath/runtest.exp";   # optional external program to check if an experiment was run
