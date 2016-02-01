@@ -208,13 +208,16 @@ sub printrun {
 # a verification application returns 1
 sub donejob {
 	my $jobfile = shift;
+	verbose "Checking if job '$jobfile' is done";
 
-	my $jobname = $jobfile;
-	$jobname =~ s{^.+/(.+)\.[^.]+$}{$1};
-	my $resfile = "$outpath/$jobname.res";
-
+	my $resfile = $jobfile;
+	$resfile =~ s{^$runpath/}{$outpath/};
+	$resfile =~ s{\.[^.]*$}{.res};
+	verbose "Searching output file '$resfile'";
+	
 	if (-f $donetest) {
-		`'$donetest' '$jobname' '$jobfile' '$resfile'`;
+		#	`'$donetest' '$jobname' '$jobfile' '$resfile'`;
+		die "FEATURE REMOVED";
 		return $?;
 	}
 
