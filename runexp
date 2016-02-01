@@ -95,9 +95,9 @@ updaterunningjobs() {
 		if [[ ! -d /proc/${pids[$from]} ]]; then
 			from=$(( $from + 1 ))
 			removed=$(( $removed + 1 ))
-			verbose "Job with PID ${pids[$from]} (${jobnames[$from]}) is over"
 		fi
 		if [[ $from != $to ]]; then
+			verbose "Job with PID ${pids[$to]} (${jobnames[$to]}) is over"
 			pids[$to]=${pids[$from]}
 			jobnames[$to]=${jobnames[$from]}
 			starttimes[$to]=${starttimes[$from]}
@@ -116,7 +116,7 @@ rm -f "$runpath/$HOST.req"
 rm -f "$runpath/$HOST.go"
 rm -f "$runpath/$HOST.info"
 rm -f "$runpath/$HOST.ready"
-verbose "Control files '$runpath/$HOST.{req,go,info}' removed"
+verbose "Control files '$runpath/$HOST.{req,go,info,ready}' removed"
 
 while true; do
 	# Check if there is room for more jobs
