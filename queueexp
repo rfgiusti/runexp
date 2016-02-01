@@ -3,6 +3,7 @@
 use strict;
 
 use Cwd qw(getcwd abs_path);
+use File::Path qw(make_path);
 
 # No stdout buffering
 #$| = 1;
@@ -234,7 +235,6 @@ sub randomizejobs {
 }
 
 die "Runs directory not found in $runpath\n" unless -d $runpath;
-die "Outputs directory not found in $outpath\n" unless -d $outpath;
 
 # Search for jobs in the runpath and its sub directories, checks if all required directories
 # exist in the ouput path as well
@@ -244,8 +244,16 @@ for my $subdir (@tree) {
 	# Remove the run path from the directory name, search for the required directory in
 	# the outputs dir
 	my $outputdir = $subdir;
-	$outputdir =~ s{^$runpath/?}{};
-	die "Output directory $outpath/$outputdir not found\n" unless -d "$outpath/$outputdir";
+	$outputdir =~ s{^$runpath/?}{$outpath/};
+	if (! -d $outputdir) {
+		my $errors;
+		make_path($outputdir, {verbose => 0, error => \$errors});
+		if (@$errors) {
+			die "Attempt to create directory and parent directories $outputdir failed:\n" .
+				join("\n", @$errors) . "\n";
+		}
+		print "Created output directory (and possibly parent directories) $outputdir\n";
+	}
 	push @jobs, getfiles($subdir, 'm|sh');
 }
 die "There are no jobs here.\n" unless scalar(@jobs);
