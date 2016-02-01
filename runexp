@@ -165,7 +165,7 @@ while true; do
 	verbose "Written flag file '$HOST.ready'"
 
 	# Wait for permission to go, unless the server suddenly finds out there are no more jobs to run
-	verbose "Waiting for manager finish writing the job list"
+	verbose "Waiting for manager to finish writing the job list"
 	while [[ ! -f "$runpath/$HOST.go" ]]; do
 		sleep 1
 		isover && break
@@ -178,15 +178,15 @@ while true; do
 	# Run the received jobs
 	verbose "Checking job(s) from manager"
 	for job in `cat "$runpath/$HOST.job"`; do
-		jobname=`echo -n $job | sed 's!^.*/!!' | sed 's!\.[^.]*$!!'`
+		jobname=`echo -n $job | sed 's!\.[^.]*$!!'`
 		echo "`date` -- [$HOST] Running $jobname"
 
 		outfile="$outpath/$jobname.res"
 		jobfile="$runpath/$job"
-		verbose "Got a job to run:"
-		verbose "   name: $jobname"
-		verbose "   file: $jobfile"
-		verbose "   output: $outfile"
+		verbose "Got a job to run: '$job'"
+		verbose "   name: '$jobname'"
+		verbose "   file: '$jobfile'"
+		verbose "   output: '$outfile'"
 
 		echo "`date` [$HOST] -- running $jobname" &> "$outfile"
 		echo "" &>> "$outfile"
