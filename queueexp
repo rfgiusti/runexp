@@ -8,8 +8,14 @@ use File::Path qw(make_path);
 # Print detailed information if running verbosely
 my $verbose = 0;
 sub verbose {
+	return unless $verbose;
+
 	my $msg = shift;
-	print "*VERB* $msg\n" if $verbose;
+	
+	my $time = `date`;
+	chomp $time;
+
+	printf "$time -- [ INFO ] $msg\n";
 }
 
 # No stdout buffering
@@ -48,7 +54,7 @@ while (@args) {
 	}
 	elsif ($arg eq "-v") {
 		$verbose = 1;
-		verbose "Entered VERBOSE mode\n";
+		verbose "Entered VERBOSE mode.";
 	}
 	elsif ($arg eq "--print-jobs") {
 		$printjobs = 1;
