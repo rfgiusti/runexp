@@ -349,7 +349,7 @@ while (1) {
 			my $jobname = $nextjob;
 			$jobname =~ s{^.*/(.*)\..*$}{$1};
 			my $jobfile = $nextjob;
-			$jobfile =~ s{^.*/}{};
+			$jobfile =~ s{^$runpath/}{};
 
 			if (donejob($nextjob)) {
 				$ranjobs++;
