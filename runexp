@@ -2,7 +2,7 @@
 
 HOST=$(hostname -s)
 SLEEPTIME=1
-VERBOSE=1
+VERBOSE=0
 
 if [[ -f ~/.runexp.conf ]]; then
 	OLDHOST=$HOST
@@ -212,7 +212,7 @@ while true; do
 	# Remove the job files
 	rm "$runpath/$HOST.go"
 	rm "$runpath/$HOST.job"
-	vebose "Removed control files '$HOST.go' and '$HOST.job'"
+	verbose "Removed control files '$HOST.go' and '$HOST.job'"
 done
 
 updaterunningjobs
