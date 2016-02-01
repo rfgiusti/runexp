@@ -5,6 +5,13 @@ use strict;
 use Cwd qw(getcwd abs_path);
 use File::Path qw(make_path);
 
+# Print detailed information if running verbosely
+my $verbose = 0;
+sub verbose {
+	my $msg = shift;
+	print "*VERB* $msg\n" if $verbose;
+}
+
 # No stdout buffering
 #$| = 1;
 
@@ -39,6 +46,10 @@ while (@args) {
 		print "Overriding output directory from '$outsubpath' with '$next'\n";
 		$outsubpath = $next;
 	}
+	elsif ($arg eq "-v") {
+		$verbose = 1;
+		verbose "Entered VERBOSE mode\n";
+	}
 	elsif ($arg eq "--print-jobs") {
 		$printjobs = 1;
 	}
@@ -72,6 +83,7 @@ Usage:
 	--random   Run jobs in random order instead of lexicographical order.
 	--print-jobs
 		   Print remaining jobs and quit.
+	-v         Print detailed information.
 	
 This is a 'works-for-me' kind of system. It works for me, right now, and that's
 currently enough. If it doesn't work for you, that could be because you're not
@@ -304,6 +316,7 @@ while (1) {
 	for my $readyflag (@readyflags) {
 		my $host = $readyflag;
 		$host =~ s!^.*/(.*)\.ready!$1!;
+		verbose "Host '$host' is ready";
 
 		my $reqfile = $readyflag;
 		$reqfile =~ s/\.ready/.req/;
@@ -319,13 +332,14 @@ while (1) {
 			printfail($host);
 			next;
 		}
+		verbose "Host '$host' is available to run $reqsize job(s)";
 
 		my @req;
 		while ($reqsize) {
 			last unless @jobs;
 
-
 			my $nextjob = shift @jobs;
+			verbose "Selected job '$nextjob' to host '$host'";
 			my $jobname = $nextjob;
 			$jobname =~ s{^.*/(.*)\..*$}{$1};
 			my $jobfile = $nextjob;
@@ -344,12 +358,17 @@ while (1) {
 		}
 
 		if (@req) {
+			verbose "Writing job list '$host.job'";
 			open SERVFILE, ">$runpath/$host.job";
 			print SERVFILE join("\n", @req);
 			close SERVFILE;
 
+			verbose "Writing go file '$host.go'";
 			open GOFILE, ">$runpath/$host.go";
 			close GOFILE;
+		}
+		else {
+			verbose "Request from host '$host' abandoned: no more jobs to run";
 		}
 	}
 }
