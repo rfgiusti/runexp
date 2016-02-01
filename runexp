@@ -2,6 +2,7 @@
 
 HOST=$(hostname -s)
 SLEEPTIME=1
+VERBOSE=1
 
 if [[ -f ~/.runexp.conf ]]; then
 	OLDHOST=$HOST
@@ -49,6 +50,13 @@ jobnames=()
 startimes=()
 runningjobs=0
 
+verbose() {
+	if [[ "$VERBOSE" == "1" ]]; then
+		echo "`date` -- [$HOST] INFO: $1"
+	fi
+}
+verbose "Running in verbose mode"
+
 isover() {
 	if [[ -f "$runpath/master.stop" ]]; then
 		return 0;
@@ -73,6 +81,7 @@ addjob() {
 	pids[$runningjobs]=$1
 	jobnames[$runningjobs]=$2
 	starttimes[$runningjobs]=$( date +%s )
+	verbose "Now tracking job with PID ${pids[$runningjobs]} (${jobnames[$runningjobs]})"
 	runningjobs=$(( $runningjobs + 1 ))
 }
 
@@ -86,6 +95,7 @@ updaterunningjobs() {
 		if [[ ! -d /proc/${pids[$from]} ]]; then
 			from=$(( $from + 1 ))
 			removed=$(( $removed + 1 ))
+			verbose "Job with PID ${pids[$from]} (${jobnames[$from]}) is over"
 		fi
 		if [[ $from != $to ]]; then
 			pids[$to]=${pids[$from]}
@@ -105,6 +115,7 @@ echo "I am the experiment runner in $HOST and I'm here to run your jobs"
 rm -f "$progpath/$HOST.req"
 rm -f "$progpath/$HOST.go"
 rm -f "$progpath/$HOST.info"
+verbose "Control files '$progpath/$HOST.{req,go,info}' removed"
 
 while true; do
 	# Check if there is room for more jobs
@@ -129,25 +140,31 @@ while true; do
 
 	# Request some jobs
 	requestsize=$(( $MAXRUNNERS - $runningjobs ))
+	verbose "Preparing to request up to $requestsize job(s)"
 	
 	# TODO: remove this ugly workaround
 	while [[ -f "$runpath/$HOST.req" ]]; do
 		# Request file should have been removed by the experiment
 		# runner. Why am I still seeing it?
+		verbose "File '$HOST.req' should not exist, but has been found. Waiting..."
 		sleep 1;
 	done
 	echo $requestsize > "$runpath/$HOST.req"
+	verbose "Written request file '$HOST.req' for up to $requestsize job(s)"
 
 	# Attempt to ensure the file is written
 	# TODO: check for race condition here
 	# TODO: remove this ugly workaround
 	sync
 	while [[ -f "$runpath/$HOST.ready" ]]; do
+		verbose "Flag file '$HOST.ready' should not exist, but has been found. Waiting..."
 		sleep 1;
 	done
 	echo > "$runpath/$HOST.ready"
+	verbose "Written flag file '$HOST.ready'"
 
 	# Wait for permission to go, unless the server suddenly finds out there are no more jobs to run
+	verbose "Waiting for manager finish writing the job list"
 	while [[ ! -f "$runpath/$HOST.go" ]]; do
 		sleep 1
 		isover && break
@@ -158,22 +175,29 @@ while true; do
 	fi
 
 	# Run the received jobs
+	verbose "Checking job(s) from manager"
 	for job in `cat "$runpath/$HOST.job"`; do
 		jobname=`echo -n $job | sed 's!^.*/!!' | sed 's!\.[^.]*$!!'`
 		echo "`date` -- [$HOST] Running $jobname"
 
 		outfile="$outpath/$jobname.res"
 		jobfile="$runpath/$job"
+		verbose "Got a job to run:"
+		verbose "   name: $jobname"
+		verbose "   file: $jobfile"
+		verbose "   output: $outfile"
 
 		echo "`date` [$HOST] -- running $jobname" &> "$outfile"
 		echo "" &>> "$outfile"
 
 		jobtype=`echo -n $job | sed 's!^.*\.!!'`
 		if [[ "$jobtype" == "m" ]]; then
+			verbose "Running MATLAB with command line: 'matlab -singleCompThread -nodesktop -r \"addpath('$runpath'); $jobname; quit;\" &>> \"$outfile\" & disown -h"
 			matlab -singleCompThread -nodesktop -r "addpath('$runpath'); $jobname; quit;" &>> "$outfile" & disown -h
 			pid=$!
 			addjob $pid "$jobname"
 		elif [[ "$jobtype" == "sh" ]]; then
+			verbose "Running bash script with command line: bash \"$jobfile\" &>> \"$outfile\" & disown -h"
 			bash "$jobfile" &>> "$outfile" & disown -h
 			pid=$!
 			addjob $pid "$jobname"
@@ -187,6 +211,7 @@ while true; do
 	# Remove the job files
 	rm "$runpath/$HOST.go"
 	rm "$runpath/$HOST.job"
+	vebose "Removed control files '$HOST.go' and '$HOST.job'"
 done
 
 updaterunningjobs
