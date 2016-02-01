@@ -1,2 +1,7 @@
 .*.swp
 test*/outputs
+*.stop
+*.req
+*.go
+*.ready
+*.info
