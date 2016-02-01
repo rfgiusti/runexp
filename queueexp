@@ -290,15 +290,15 @@ if ($printjobs) {
 	exit 0;
 }
 
-unlink "$_" for getfiles("go|req|ready|job|stop");
+unlink "$_" for getfiles($runpath, "go|req|ready|job|stop");
 
 while (1) {
 	last unless @jobs;
 
-	my @readyflags = getfiles("ready");
+	my @readyflags = getfiles($runpath, "ready");
 	while (!@readyflags) {
 		sleep 1;
-		@readyflags = getfiles("ready");
+		@readyflags = getfiles($runpath, "ready");
 	}
 
 	for my $readyflag (@readyflags) {
