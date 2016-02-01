@@ -112,10 +112,11 @@ updaterunningjobs() {
 }
 
 echo "I am the experiment runner in $HOST and I'm here to run your jobs"
-rm -f "$progpath/$HOST.req"
-rm -f "$progpath/$HOST.go"
-rm -f "$progpath/$HOST.info"
-verbose "Control files '$progpath/$HOST.{req,go,info}' removed"
+rm -f "$runpath/$HOST.req"
+rm -f "$runpath/$HOST.go"
+rm -f "$runpath/$HOST.info"
+rm -f "$runpath/$HOST.ready"
+verbose "Control files '$runpath/$HOST.{req,go,info}' removed"
 
 while true; do
 	# Check if there is room for more jobs
