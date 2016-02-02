@@ -178,30 +178,40 @@ while true; do
 	# Run the received jobs
 	verbose "Checking job(s) from manager"
 	for job in `cat "$runpath/$HOST.job"`; do
-		jobname=`echo -n $job | sed 's!\.[^.]*$!!'`
-		echo "`date` -- [$HOST] Running $jobname"
-
-		outfile="$outpath/$jobname.res"
+		jobshortname=`echo -n $job | sed 's!^.*/!!' | sed 's!\.[^.]*$!!'`
+		joblongname=`echo -n $job | sed 's!\.[^.]*$!!'`
+		jobdirpath="$runpath/`echo -n $job | sed 's!/\?[^/]\+$!!'`"
+		outfile="$outpath/$joblongname.res"
 		jobfile="$runpath/$job"
 		verbose "Got a job to run: '$job'"
-		verbose "   name: '$jobname'"
-		verbose "   file: '$jobfile'"
-		verbose "   output: '$outfile'"
+		verbose "   short name : '$jobshortname'"
+		verbose "   long name  : '$joblongname'"
+		verbose "   job dirpath: '$jobdirpath'"
+		verbose "   job file   : '$jobfile'"
+		verbose "   output file: '$outfile'"
 
-		echo "`date` [$HOST] -- running $jobname" &> "$outfile"
+		echo "`date` -- [$HOST] Running $joblongname"
+		echo "`date` -- [$HOST] Running $joblongname" &> "$outfile"
 		echo "" &>> "$outfile"
 
 		jobtype=`echo -n $job | sed 's!^.*\.!!'`
 		if [[ "$jobtype" == "m" ]]; then
-			verbose "Running MATLAB with command line: 'matlab -singleCompThread -nodesktop -r \"addpath('$runpath'); $jobname; quit;\" &>> \"$outfile\" & disown -h"
-			matlab -singleCompThread -nodesktop -r "addpath('$runpath'); $jobname; quit;" &>> "$outfile" & disown -h
+			if [[ -f "./${jobshortname}.m" ]]; then
+				echo "`date` -- [$HOST] WARNING: Possible classh name with file './${jobshortname}.m'"
+				echo "`date` -- [$HOST] WARNING: Possible classh name with file './${jobshortname}.m'" &>> "$outfile"
+				echo "`date` -- [$HOST] WARNING: File in current working dir may take precedence over '$jobfile'" &>> "$outfile"
+				echo "" &>> "$outfile"
+			fi
+			verbose "Running MATLAB with command line: "\
+"'matlab -singleCompThread -nodesktop -r \"addpath('$jobdirpath'); $jobshortname; quit;\" &>> \"$outfile\" & disown -h"
+			matlab -singleCompThread -nodesktop -r "addpath('$jobdirpath'); $jobshortname; quit;" &>> "$outfile" & disown -h
 			pid=$!
-			addjob $pid "$jobname"
+			addjob $pid "$joblongname"
 		elif [[ "$jobtype" == "sh" ]]; then
 			verbose "Running bash script with command line: bash \"$jobfile\" &>> \"$outfile\" & disown -h"
 			bash "$jobfile" &>> "$outfile" & disown -h
 			pid=$!
-			addjob $pid "$jobname"
+			addjob $pid "$joblongname"
 		else
 			echo "Invalid job type ($jobtype)"
 		fi
