@@ -13,6 +13,14 @@ This is not a load balancement manager. Each experiment server must be started w
 it will run in parallel. The purpose of this script is that dynamically dispatching experiments to the servers
 is more efficient and easier than manually assigning experiments to each experiment server.
 
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in
+compliance with the License. You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+**This software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied.**
+
 
 
 Preparing
