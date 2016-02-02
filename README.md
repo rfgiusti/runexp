@@ -13,6 +13,14 @@ This is not a load balancement manager. Each experiment server must be started w
 it will run in parallel. The purpose of this script is that dynamically dispatching experiments to the servers
 is more efficient and easier than manually assigning experiments to each experiment server.
 
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in
+compliance with the License. You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+**This software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied.**
+
 
 
 Preparing
@@ -57,7 +65,7 @@ Known limitations
 
 - Requires that a distributed filesystem is present
 - Has some overhead due to the need of filesystem synchronization to avoid race conditions
-- Might possibly run into a race condition that will lock the remote server if the network is too slow (this has not
+- *Might possibly perhaps* (yeah, I said that) run into a race condition that will lock the remote server if the network is too slow (this has not
 been observer yet, though; but it is theoretically possible)
 - Failure/success detection is performed by reading the script output, and a particular string pattern is required
 for that (or a custom failure/detection script must be written to read the script output)
