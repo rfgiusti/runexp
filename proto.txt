@@ -11,8 +11,6 @@ STAGE
 2) Communication
 
 
-
-
 STAGE 1
 
 Server-side

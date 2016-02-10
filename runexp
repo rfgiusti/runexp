@@ -1,0 +1,136 @@
+#!/usr/bin/perl
+
+use strict;
+
+use Cwd qw(getcwd abs_path);
+use File::Path qw(make_path);
+
+# Print detailed information if running verbosely
+my $verbose = 0;
+sub verbose {
+	return unless $verbose;
+
+	my $msg = shift;
+	
+	my $time = `date "+%b %d %T"`;
+	chomp $time;
+
+	printf "$time [ INFO ] $msg\n";
+}
+
+# Check arguments and set default paths
+my $maxjobs = undef;
+my $runsubpath = 'runs';		# default jobs directory
+my $outsubpath = 'outputs';		# default outputs directory
+my $basedir = undef;
+my $stopparsing = 0;
+my @args = @ARGV;
+while (@args) {
+	my $arg = shift @args;
+
+	if ($stopparsing) {
+		# A previous -- was supplied. So no more arguments should be parsed. The only valid options
+		# are maxjobs and the basedir. And they must be defined only once
+		die "Invalid argument '$arg'\n" if defined $maxjobs && defined $basedir;
+		$basedir = $arg if defined $maxjobs;
+		$maxjobs = $arg unless defined $maxjobs;
+		next;
+	}
+
+	if ($arg eq "-r") {
+		my $next = shift @args;
+		die "Missing value for option -r\n" unless defined $next;
+		print "Overriding runs directory from '$runsubpath' with '$next'\n";
+		$runsubpath = $next;
+	}
+	elsif ($arg eq "-o") {
+		my $next = shift @args;
+		die "Missing value for option -o\n" unless defined $next;
+		print "Overriding output directory from '$outsubpath' with '$next'\n";
+		$outsubpath = $next;
+	}
+	elsif ($arg eq "-v") {
+		$verbose = 1;
+		verbose "Entered VERBOSE mode.";
+	}
+	elsif ($arg eq "--help") {
+		my $me = $0 || "runex";
+		$me =~ s!.*/!!;
+		print "$me: experiment runner
+
+This is the experiment runner for runexp. runexp is a system designed to launch
+experiments in several experiment servers using a distributed file system as
+communication medium.
+
+Usage:
+	$me <MAXJOBS> [<BASEDIR>] [OPTIONS]
+
+	<MAXJOBS>  Mandatory argument that specifies how many experiments should
+	           be simultaneously in execution at a time. This argument must
+		   be specified before <BASEDIR>, if <BASEDIR> is specified.
+	<BASEDIR>  Specify where runexp should look for the jobs and  outputs
+		   directory. If ommitted, the current working directory is
+		   used. This does not change the current working directory.
+	-r <RUNPATH>
+		   Specify the directory where jobs should be looked for. Each
+		   job either a .m or a .sh file. The default value for this
+		   option is <BASEDIR>/runs
+	-o <OUTPUTPATH>
+		   Specify the directory where the job outputs will be written.
+		   When executed, the standard output and the standard error
+		   output will be redicted to a file in this directory. The
+		   default value for this option is <BASEDIR>/outputs
+	-v         Print detailed information.
+	
+This is a 'works-for-me' kind of system. It works for me, right now, and that's
+currently enough. If it doesn't work for you, that could be because you're not
+me, or maybe you are me in a distant future and you don't remember why you even
+needed this in the first place.
+
+You're currently using an SSH filesystem to establish the distributed file
+system that runexp requires. Go to the experiment server, sshfs to your machine
+and symlink whatever you need. The experiment server should not know it's not
+your workstation.
+
+Once the experiment server is set up, launch the queue manager in your
+workstation, then launch the runners in each experiment server. It should go
+like this:
+
+	\$ queueexp -r runs -o logs
+	\$ ssh user\@experimentserver
+	[...]
+	\$ runexp 8
+
+This will run 8 simultaneous jobs in the experiment server.
+";
+		exit;
+	}
+	elsif ($arg eq "--") {
+		# Stop parsing arguments
+		$stopparsing = 1;
+	}
+	elsif ($arg !~ /^-/) {
+		# If something that does not start with a dash is supplied, we assume it is either the maximum number of
+		# simultaneous jobs or a base dir (the number of jobs comes first)
+		die "Invalid argument '$arg'\n" if defined $maxjobs && defined $basedir;
+		$basedir = $arg if defined $maxjobs;
+		$maxjobs = $arg unless defined $maxjobs;
+	}
+	else {
+		die "Invalid argument '$arg'\n";
+	}
+}
+my $path;
+if (defined $basedir) {
+	print "Overriding base directory from './' with '$basedir'\n";
+	$path = abs_path($basedir);
+}
+else {
+	$path = abs_path(getcwd());
+}
+$path =~ s{/$}{};
+my $runpath = "$path/$runsubpath";
+my $outpath = "$path/$outsubpath";
+
+die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
+die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
