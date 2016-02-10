@@ -15,7 +15,7 @@ sub verbose {
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time -- [ INFO ] $msg\n";
+	printf "$time [ INFO ] $msg\n";
 }
 
 # No stdout buffering
@@ -28,6 +28,7 @@ my $printjobs = 0;
 my $randomize = 0;			# randomize jobs
 my $basedir = undef;
 my $stopparsing = 0;
+my $port = undef;
 my @args = @ARGV;
 while (@args) {
 	my $arg = shift @args;
@@ -62,6 +63,12 @@ while (@args) {
 	elsif ($arg eq "--random") {
 		$randomize = 1;
 	}
+	elsif ($arg eq "-p") {
+		my $next = shift @args;
+		die "Missing value for option -p\n" unless defined $next;
+		$port = $next;
+		die "Invalid port number: $port\n" unless $port =~ /^[0-9]+$/;
+	}
 	elsif ($arg eq "--help") {
 		my $me = $0 || "queueexp";
 		$me =~ s!.*/!!;
@@ -90,6 +97,7 @@ Usage:
 	--print-jobs
 		   Print remaining jobs and quit.
 	-v         Print detailed information.
+	-p <PORT>  Listen on port <PORT>
 	
 This is a 'works-for-me' kind of system. It works for me, right now, and that's
 currently enough. If it doesn't work for you, that could be because you're not
@@ -142,6 +150,8 @@ my $outpath = "$path/$outsubpath";
 my $donetest = "$outpath/runtest.exp";   # optional external program to check if an experiment was run
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
+
+die "No port to listen to specified\n" unless defined $port;
 
 # Get all files with extension specified by $ext in the specified directory. $ext is a pipe-separated list
 sub getfiles {
