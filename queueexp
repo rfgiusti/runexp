@@ -12,7 +12,7 @@ sub verbose {
 
 	my $msg = shift;
 	
-	my $time = `date`;
+	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
 	printf "$time -- [ INFO ] $msg\n";
@@ -185,7 +185,7 @@ sub gettree {
 sub printfail {
 	my $host = shift;
 
-	my $time = `date`;
+	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
 	printf "$time -- [ERROR] $host: request file is empty. Client is stuck\n";
@@ -198,7 +198,7 @@ sub printrun {
 	my $jobname = shift;
 	my $host = shift;
 
-	my $time = `date`;
+	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
 	printf "$time -- [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
