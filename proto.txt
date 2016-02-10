@@ -1,0 +1,65 @@
+Communication between manager and runners via sockets
+-----------------------------------------------------
+
+
+This drafts the communication protocol version 1.0
+
+
+STAGE
+
+1) Initialization
+2) Communication
+
+
+
+
+STAGE 1
+
+Server-side
+
+	1. Wait for a connection
+	2. When a client connects, wait for the hail "SALUTON"
+	3. If a different message is received, terminate the connection
+	4. Write "VERSIO <PROTOCOL VERSION>" on the client socket
+	5. Start processing this client on STAGE 2, continue expecting other
+	   clients on STAGE 1
+
+Client-side
+
+	1. Connect to the server
+	2. Send the hail "SALUTON"
+	3. Waits for protocol version
+	4. If server send the message "VERSIO <PROTOCOL VERSION>" and the version
+	   number is acceptable, move to step 5. Otherwise, kill the connection
+	   and terminate the execution
+	5. Move to STAGE 2
+
+
+STAGE 2
+
+Server-side
+
+	1. Wait for client to send a message
+	2. Message must be in the form "PETAS <NUMBER OF JOBS>"
+	3. If server has job to run, write a job name into the client socket.
+	   Otherwise, go to step 4
+	4. Decrease <NUMBER OF JOBS>. If <NUMBER OF JOBS> is not zero, go to
+	   step 3
+	5. Write "PROCEDI" on the client socket
+	6. If there are remaining jobs, go back to step 1
+	7. When jobs finish, kill the connection
+
+Client-side
+
+	1. Check how many jobs can be executed at this time
+	2. Send a request to server: "PETAS <NUMBER OF JOBS>"
+	3. Start a list of new incoming jobs
+	3. Read server socket
+	4. Server should have sent a job name; add job to the list
+	5. If instead of a job, server sent message "PROCEDI", move to step 6.
+	   Otherwise move back to step 3
+	6. If list is not empty, launch the jobs informed by the server
+	7. Wait for one or more job(s) to finish. If server is still connected,
+	   go back to step 1
+	8. Wait until all jobs have finished executing
+	9. Terminate
