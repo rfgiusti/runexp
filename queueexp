@@ -4,6 +4,7 @@ use strict;
 
 use Cwd qw(getcwd abs_path);
 use File::Path qw(make_path);
+use IO::Socket::INET;
 
 # Print detailed information if running verbosely
 my $verbose = 0;
@@ -17,9 +18,6 @@ sub verbose {
 
 	printf "$time [ INFO ] $msg\n";
 }
-
-# No stdout buffering
-#$| = 1;
 
 # Check arguments and set default paths
 my $runsubpath = 'runs';		# default jobs directory
@@ -151,6 +149,7 @@ my $donetest = "$outpath/runtest.exp";   # optional external program to check if
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
 
+my $serversocket;
 die "No port to listen to specified\n" unless defined $port;
 
 # Get all files with extension specified by $ext in the specified directory. $ext is a pipe-separated list
@@ -321,7 +320,21 @@ if ($printjobs) {
 	exit 0;
 }
 
+verbose "Opening server at port $port";
+$serversocket = IO::Socket::INET->new(
+	LocalHost => '0.0.0.0',
+	LocalPort => $port,
+	Proto     => 'tcp',
+	Listen    => 5,
+	ReuseAddr => 1,
+) or die "Error opening server on port $port: $!\n";
+
 while (1) {
+	verbose "Waiting for connections";
+	my $client = $serversocket->accept();
+	my $remoteaddr = $client->peerhost();
+	my $remoteport = $client->peerport();
+	verbose "Accepted client from $remoteaddr:$remoteport";
 }
 print "All jobs were spawned. Over and out.\n";
 
