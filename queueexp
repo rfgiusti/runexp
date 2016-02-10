@@ -198,7 +198,7 @@ sub printfail {
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time -- [ERROR] $host: request file is empty. Client is stuck\n";
+	printf "$time [ERROR] $host: request file is empty. Client is stuck\n";
 }	
 
 
@@ -211,7 +211,7 @@ sub printrun {
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time -- [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
+	printf "$time [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
 }
 
 # Check if a job has already been executed. A job has been executed if its output file contains the string RES: or if
@@ -321,75 +321,7 @@ if ($printjobs) {
 	exit 0;
 }
 
-unlink "$_" for getfiles($runpath, "go|req|ready|job|stop");
-
 while (1) {
-	last unless @jobs;
-
-	my @readyflags = getfiles($runpath, "ready");
-	while (!@readyflags) {
-		sleep 1;
-		@readyflags = getfiles($runpath, "ready");
-	}
-
-	for my $readyflag (@readyflags) {
-		my $host = $readyflag;
-		$host =~ s!^.*/(.*)\.ready!$1!;
-		verbose "Host '$host' is ready";
-
-		my $reqfile = $readyflag;
-		$reqfile =~ s/\.ready/.req/;
-
-		open REQFILE, "<$reqfile";
-		my $reqsize = <REQFILE>;
-		chomp $reqsize;
-		close REQFILE;
-
-		unlink $readyflag;
-		unlink $reqfile;
-		if ($reqsize !~ /^\d+$/) {
-			printfail($host);
-			next;
-		}
-		verbose "Host '$host' is available to run $reqsize job(s)";
-
-		my @req;
-		while ($reqsize) {
-			last unless @jobs;
-
-			my $nextjob = shift @jobs;
-			verbose "Selected job '$nextjob' to host '$host'";
-			my $jobname = $nextjob;
-			$jobname =~ s{^.*/(.*)\..*$}{$1};
-			my $jobfile = $nextjob;
-			$jobfile =~ s{^$runpath/}{};
-
-			if (donejob($nextjob)) {
-				$ranjobs++;
-				printrun($ranjobs / $totaljobs, $jobname, "SKIPPING");
-			}
-			else {
-				$ranjobs++;
-				printrun($ranjobs / $totaljobs, $jobname, $host);
-				$reqsize--;
-				push @req, $jobfile;
-			}
-		}
-
-		if (@req) {
-			verbose "Writing job list '$host.job'";
-			open SERVFILE, ">$runpath/$host.job";
-			print SERVFILE join("\n", @req);
-			close SERVFILE;
-
-			verbose "Writing go file '$host.go'";
-			open GOFILE, ">$runpath/$host.go";
-			close GOFILE;
-		}
-		else {
-			verbose "Request from host '$host' abandoned: no more jobs to run";
-		}
-	}
 }
 print "All jobs were spawned. Over and out.\n";
 
