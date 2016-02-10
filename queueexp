@@ -3,6 +3,20 @@
 use strict;
 
 use Cwd qw(getcwd abs_path);
+use File::Path qw(make_path);
+
+# Print detailed information if running verbosely
+my $verbose = 0;
+sub verbose {
+	return unless $verbose;
+
+	my $msg = shift;
+	
+	my $time = `date "+%b %d %T"`;
+	chomp $time;
+
+	printf "$time -- [ INFO ] $msg\n";
+}
 
 # No stdout buffering
 #$| = 1;
@@ -10,9 +24,22 @@ use Cwd qw(getcwd abs_path);
 # Check arguments and set default paths
 my $runsubpath = 'runs';		# default jobs directory
 my $outsubpath = 'outputs';		# default outputs directory
+my $printjobs = 0;
+my $randomize = 0;			# randomize jobs
+my $basedir = undef;
+my $stopparsing = 0;
 my @args = @ARGV;
 while (@args) {
 	my $arg = shift @args;
+
+	if ($stopparsing) {
+		# A previous -- was supplied. So no more arguments should be parsed. The only valid option
+		# is the basedir. And it must be defined only once.
+		die "Invalid argument '$arg'\n" if defined $basedir;
+		$basedir = $arg;
+		next;
+	}
+	
 	if ($arg eq "-r") {
 		my $next = shift @args;
 		die "Missing value for option -r\n" unless defined $next;
@@ -25,72 +52,140 @@ while (@args) {
 		print "Overriding output directory from '$outsubpath' with '$next'\n";
 		$outsubpath = $next;
 	}
+	elsif ($arg eq "-v") {
+		$verbose = 1;
+		verbose "Entered VERBOSE mode.";
+	}
+	elsif ($arg eq "--print-jobs") {
+		$printjobs = 1;
+	}
+	elsif ($arg eq "--random") {
+		$randomize = 1;
+	}
 	elsif ($arg eq "--help") {
 		my $me = $0 || "queueexp";
 		$me =~ s!.*/!!;
-		print "$me: queue experiments for distributed execution\n";
-		print "\n";
-		print "This is the queue management for runexp. runexp is a system designed to launch\n";
-		print "experiments in several experiment servers using a distributed file system as\n";
-		print "communication medium.\n";
-		print "\n";
-		print "Usage:\n";
-		print "\t$me [-r <run-path>] [-o <output-path>]\n";
-		print "\n";
-		print "\t-r	Specify the directory where jobs should be looked for. Each job\n";
-		print "\t\tis one executable file.\n";
-		print "\t-o	Specify the directory where the job outputs will be written.\n";
-		print "\t\tEach job's standard output is redirected to a single file in\n";
-		print "\t\tthis directory.\n";
-		print "	\n";
-		print "This is a 'works-for-me' kind of system. It works for me, right now, and that's\n";
-		print "currently enough. If it doesn't work for you, that could be because you're not\n";
-		print "me, or maybe you are me in a distant future and you don't remember why you even\n";
-		print "needed this in the first place.\n";
-		print "\n";
-		print "You're currently using an SSH filesystem to establish the distributed file\n";
-		print "system that runexp requires. Go to the experiment server, sshfs to your machine\n";
-		print "and symlink whatever you need. The experiment server should not know it's not\n";
-		print "your workstation.\n";
-		print "\n";
-		print "Once the experiment server is set up, launch the queue manager in your\n";
-		print "workstation, then launch the runners in each experiment server. It should go\n";
-		print "like this:\n";
-		print "\n";
-		print "	\$ queueexp -r runs -o logs\n";
-		print "	\$ ssh user\@experimentserver\n";
-		print "	[...]\n";
-		print "	\$ runexp 8 runs logs\n";
-		print "\n";
-		print "This will run 8 simultaneous jobs in the experiment server.\n";
+		print "$me: queue experiments for distributed execution
+
+This is the queue management for runexp. runexp is a system designed to launch
+experiments in several experiment servers using a distributed file system as
+communication medium.
+
+Usage:
+	$me [<BASEDIR>] [OPTIONS]
+
+	<BASEDIR>  Specify where runexp should look for the jobs and  outputs
+		   directory. If ommitted, the current working directory is
+		   used. This does not change the current working directory.
+	-r <RUNPATH>
+		   Specify the directory where jobs should be looked for. Each
+		   job either a .m or a .sh file. The default value for this
+		   option is <BASEDIR>/runs
+	-o <OUTPUTPATH>
+		   Specify the directory where the job outputs will be written.
+		   When executed, the standard output and the standard error
+		   output will be redicted to a file in this directory. The
+		   default value for this option is <BASEDIR>/outputs
+	--random   Run jobs in random order instead of lexicographical order.
+	--print-jobs
+		   Print remaining jobs and quit.
+	-v         Print detailed information.
+	
+This is a 'works-for-me' kind of system. It works for me, right now, and that's
+currently enough. If it doesn't work for you, that could be because you're not
+me, or maybe you are me in a distant future and you don't remember why you even
+needed this in the first place.
+
+You're currently using an SSH filesystem to establish the distributed file
+system that runexp requires. Go to the experiment server, sshfs to your machine
+and symlink whatever you need. The experiment server should not know it's not
+your workstation.
+
+Once the experiment server is set up, launch the queue manager in your
+workstation, then launch the runners in each experiment server. It should go
+like this:
+
+	\$ queueexp -r runs -o logs
+	\$ ssh user\@experimentserver
+	[...]
+	\$ runexp 8 runs logs
+
+This will run 8 simultaneous jobs in the experiment server.
+";
 		exit;
+	}
+	elsif ($arg eq "--") {
+		# Stop parsing arguments
+		$stopparsing = 1;
+	}
+	elsif ($arg !~ /^-/) {
+		# If something that does not start with a dash is supplied, we assume it is the base
+		# directory. Unless it has already been supplied.
+		die "Invalid argument '$arg'\n" if defined $basedir;
+		$basedir = $arg;
+		print "Overriding base directory from './' with '$basedir'\n";
 	}
 	else {
 		die "Invalid argument '$arg'\n";
 	}
 }
-my $path = getcwd();
+my $path;
+if (defined $basedir) {
+	$path = abs_path($basedir);
+}
+else {
+	$path = abs_path(getcwd());
+}
+$path =~ s{/$}{};
 my $runpath = "$path/$runsubpath";
 my $outpath = "$path/$outsubpath";
 my $donetest = "$outpath/runtest.exp";   # optional external program to check if an experiment was run
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
-# Get all files with extension specified by $ext in the run directory. $ext is a pipe-separated list
+
+# Get all files with extension specified by $ext in the specified directory. $ext is a pipe-separated list
 sub getfiles {
+	my $dir = shift;
 	my $ext = shift;
 	
-	opendir(RUNS, $runpath) or die "Can't open runs directory at $runpath\n";
-	my @files = map "$runpath/$_", grep(/\.($ext)$/, readdir(RUNS));
+	opendir(RUNS, $dir) or die "Can't open runs directory at $dir\n";
+	my @files = map "$dir/$_", grep(/\.($ext)$/, readdir(RUNS));
 	closedir(RUNS);
 
 	return @files;
+}
+
+# Get the directories that have job files
+sub gettree {
+	my $root = shift;
+	my $ext = shift;
+	my @result = ();
+
+	opendir CHILDREN, $root or die "Can't open directory at $root\n";
+	my @children = readdir(CHILDREN);
+	closedir CHILDREN;
+
+	my @dirs = grep(-d "$root/$_" && !m/^\.\.?$/, @children);
+	my @jobs = grep(-f "$root/$_" && m/\.($ext)$/, @children);
+
+	for my $subdir (@dirs) {
+		my @subresult = gettree("$root/$subdir", $ext);
+		if (scalar(@subresult) > 0) {
+			push @result, @subresult;
+		}
+	}
+	if (scalar(@jobs)) {
+		push @result, $root;
+	}
+
+	return @result;
 }
 
 # Print if request file is empty
 sub printfail {
 	my $host = shift;
 
-	my $time = `date`;
+	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
 	printf "$time -- [ERROR] $host: request file is empty. Client is stuck\n";
@@ -103,7 +198,7 @@ sub printrun {
 	my $jobname = shift;
 	my $host = shift;
 
-	my $time = `date`;
+	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
 	printf "$time -- [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
@@ -113,13 +208,16 @@ sub printrun {
 # a verification application returns 1
 sub donejob {
 	my $jobfile = shift;
+	verbose "Checking if job '$jobfile' is done";
 
-	my $jobname = $jobfile;
-	$jobname =~ s{^.+/(.+)\.[^.]+$}{$1};
-	my $resfile = "$outpath/$jobname.res";
-
+	my $resfile = $jobfile;
+	$resfile =~ s{^$runpath/}{$outpath/};
+	$resfile =~ s{\.[^.]*$}{.res};
+	verbose "Searching output file '$resfile'";
+	
 	if (-f $donetest) {
-		`'$donetest' '$jobname' '$jobfile' '$resfile'`;
+		#	`'$donetest' '$jobname' '$jobfile' '$resfile'`;
+		die "FEATURE REMOVED";
 		return $?;
 	}
 
@@ -128,7 +226,7 @@ sub donejob {
 	my $done = 0;
 	open OUTFILE, "<$resfile";
 	while (my $line = <OUTFILE>) {
-		if ($line =~ /RES:/) {
+		if ($line =~ /RES:/ && $line !~ /RES:\s*fail/) {
 			$done = 1;
 			last;
 		}
@@ -138,7 +236,47 @@ sub donejob {
 	return $done;
 }
 
-my @jobs = sort { $a cmp $b } getfiles('m|sh');
+
+sub randomizejobs {
+	my $list = shift;
+	my $numjobs = scalar (@$list);
+	my $numshuffled = 0;
+
+	while ($numshuffled < $numjobs) {
+		# Randomly selects a job from the non-shuffled block
+		my $pick = int(rand($numjobs - $numshuffled));
+
+		# Moves to the end of the non-shuffled block, which will be the first new shuffled job
+		$numshuffled++;
+		my $moveto = $numjobs - $numshuffled;
+		my $aux = $list->[$moveto];
+		$list->[$moveto] = $list->[$pick];
+		$list->[$pick] = $aux;
+	}
+}
+
+die "Runs directory not found in $runpath\n" unless -d $runpath;
+
+# Search for jobs in the runpath and its sub directories, checks if all required directories
+# exist in the ouput path as well
+my @tree = gettree($runpath, 'm|sh');
+my @jobs = ();
+for my $subdir (@tree) {
+	# Remove the run path from the directory name, search for the required directory in
+	# the outputs dir
+	my $outputdir = $subdir;
+	$outputdir =~ s{^$runpath/?}{$outpath/};
+	if (! -d $outputdir) {
+		my $errors;
+		make_path($outputdir, {verbose => 0, error => \$errors});
+		if (@$errors) {
+			die "Attempt to create directory and parent directories $outputdir failed:\n" .
+				join("\n", @$errors) . "\n";
+		}
+		print "Created output directory (and possibly parent directories) $outputdir\n";
+	}
+	push @jobs, getfiles($subdir, 'm|sh');
+}
 die "There are no jobs here.\n" unless scalar(@jobs);
 
 my $totaljobs = @jobs;
@@ -147,30 +285,47 @@ print "There are $totaljobs jobs here.\n";
 
 @jobs = grep(!donejob($_), @jobs);
 my $ranjobs = $totaljobs - @jobs;
-if ($ranjobs > 1) {
-	print "I had previously ran $ranjobs jobs. I will skip them.\n";
+if (!@jobs) {
+	print "I have already run everything. Nothing else to do here.\n";
+	exit;
 }
 elsif ($ranjobs) {
-	print "I had previously ran one. I will skip it.\n";
+	printf "I have already run $ranjobs job%s. I will skip them.\n", ($ranjobs > 1 ? "s" : "");
+	printf "I now have " . (scalar @jobs) . " job%s to run.\n", (@jobs > 1 ? "s" : "");
 }
 else {
 	print "I did not do anything yet.\n";
 }
 
-unlink "$_" for getfiles("go|req|ready|job|stop");
+# Job list may or may not be sorted. Do not assume anything. Unless option --randomize is supplied,
+# then the list should be sorted.
+if ($randomize) {
+	randomizejobs(\@jobs) if $randomize;
+}
+else {
+	@jobs = sort { $a cmp $b } @jobs;
+}
+
+if ($printjobs) {
+	print join("\n", @jobs) . "\n";
+	exit 0;
+}
+
+unlink "$_" for getfiles($runpath, "go|req|ready|job|stop");
 
 while (1) {
 	last unless @jobs;
 
-	my @readyflags = getfiles("ready");
+	my @readyflags = getfiles($runpath, "ready");
 	while (!@readyflags) {
 		sleep 1;
-		@readyflags = getfiles("ready");
+		@readyflags = getfiles($runpath, "ready");
 	}
 
 	for my $readyflag (@readyflags) {
 		my $host = $readyflag;
 		$host =~ s!^.*/(.*)\.ready!$1!;
+		verbose "Host '$host' is ready";
 
 		my $reqfile = $readyflag;
 		$reqfile =~ s/\.ready/.req/;
@@ -186,17 +341,18 @@ while (1) {
 			printfail($host);
 			next;
 		}
+		verbose "Host '$host' is available to run $reqsize job(s)";
 
 		my @req;
 		while ($reqsize) {
 			last unless @jobs;
 
-
 			my $nextjob = shift @jobs;
+			verbose "Selected job '$nextjob' to host '$host'";
 			my $jobname = $nextjob;
 			$jobname =~ s{^.*/(.*)\..*$}{$1};
 			my $jobfile = $nextjob;
-			$jobfile =~ s{^.*/}{};
+			$jobfile =~ s{^$runpath/}{};
 
 			if (donejob($nextjob)) {
 				$ranjobs++;
@@ -211,12 +367,17 @@ while (1) {
 		}
 
 		if (@req) {
+			verbose "Writing job list '$host.job'";
 			open SERVFILE, ">$runpath/$host.job";
 			print SERVFILE join("\n", @req);
 			close SERVFILE;
 
+			verbose "Writing go file '$host.go'";
 			open GOFILE, ">$runpath/$host.go";
 			close GOFILE;
+		}
+		else {
+			verbose "Request from host '$host' abandoned: no more jobs to run";
 		}
 	}
 }

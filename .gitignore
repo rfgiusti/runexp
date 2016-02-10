@@ -1,0 +1,8 @@
+.*.swp
+test*/outputs
+test4/anotherdir/outputs/*
+*.stop
+*.req
+*.go
+*.ready
+*.info
