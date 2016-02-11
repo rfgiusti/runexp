@@ -39,25 +39,26 @@ Server-side
 
 	1. Wait for client to send a message
 	2. Message must be in the form "PETAS <NUMBER OF JOBS>"
-	3. If server has job to run, write a job name into the client socket.
-	   Otherwise, go to step 4
-	4. Decrease <NUMBER OF JOBS>. If <NUMBER OF JOBS> is not zero, go to
-	   step 3
-	5. Write "PROCEDI" on the client socket
-	6. If there are remaining jobs, go back to step 1
-	7. When jobs finish, kill the connection
+	3. If the server has no more jobs to run, go to step 7. Otherwise,
+	   continue the flow to step 4
+	4. Write the name of the next job into the client socket
+	5. Decrease <NUMBER OF JOBS>. If <NUMBER OF JOBS> is now zero, go to
+	   step 5, otherwise, go back to step 4
+	6. Write "PROCEDU" on the client socket. Go back to step 1
+	7. Send the message "FINO". Wait for client to reply
+	8. When client replies "KOMPRENAS", kill the connection
 
 Client-side
 
 	1. Check how many jobs can be executed at this time
-	2. Send a request to server: "PETAS <NUMBER OF JOBS>"
+	2. Send a request to the server: "PETAS <NUMBER OF JOBS>"
 	3. Start a list of new incoming jobs
-	3. Read server socket
-	4. Server should have sent a job name; add job to the list
-	5. If instead of a job, server sent message "PROCEDI", move to step 6.
-	   Otherwise move back to step 3
-	6. If list is not empty, launch the jobs informed by the server
-	7. Wait for one or more job(s) to finish. If server is still connected,
-	   go back to step 1
-	8. Wait until all jobs have finished executing
-	9. Terminate
+	4. Read server socket
+	5. Server should have sent a job name; add job to the list
+	6. If instead of a job, server sent message "PROCEDU", move to step 7.
+	   If the message is "FINO", go to step 10. Otherwise go back to step 3
+	7. If list is not empty, launch the jobs informed by the server
+	8. Wait for one or more job(s) have finished. Go back to step 1
+	9. Wait for server to send the message "FINO"
+	10. Reply with "KOMPRENAS". The server will kill the connection
+	11. Wait until all jobs have finished executing 
