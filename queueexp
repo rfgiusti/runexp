@@ -388,7 +388,7 @@ sub randomizejobs {
 }
 
 
-# Receive the SALUTON message from the client and 
+# Receive the SALUTON message from the client and get client's name
 sub client_hail {
 	my $socket = shift;
 	my $id = shift;
@@ -397,31 +397,34 @@ sub client_hail {
 	# Wait for cleint to send the HELLO message
 	verbose "Client $id: waiting 'SALUTON'";
 	$socket->recv($msg, 1024);
-	return 0 unless $msg eq "SALUTON";
+	verbose "Client $id: received message '$msg'";
+	return undef unless $msg =~ /^SALUTON; MI ([-_a-zA-Z0-9]+)$/;
+	my $name = $1;
+	verbose "Client $id: now known as $name";
 
 	# Send protocol version to client
-	verbose "Client $id: sending 'VERSIO'";
+	verbose "Client $name: sending 'VERSIO'";
 	$socket->send(sprintf("VERSIO %.1f", $PROTOCOL_VERSION));	
 
 	# Wait for client to acknowledge
-	verbose "Client $id: waiting 'KOMPRENAS'";
+	verbose "Client $name: waiting 'KOMPRENAS'";
 	$socket->recv($msg, 1024);
-	return 0 unless $msg eq "KOMPRENAS";
+	return undef unless $msg eq "KOMPRENAS";
 
-	return 1;
+	return $name;
 }
 
 
 # Wait for a client to send a request for jobs
 sub client_readjobrequest {
 	my $socket = shift;
-	my $id = shift;
+	my $name = shift;
 	my $msg;
 
-	verbose "Client $id: waiting for job request";
+	verbose "Client $name: waiting for job request";
 	$socket->recv($msg, 1024);
 
-	verbose "Cliend $id: received message '$msg'";
+	verbose "Cliend $name: received message '$msg'";
 	return $msg eq "PETO";
 }
 
@@ -430,10 +433,13 @@ sub client_readjobrequest {
 # Send a job to the client
 sub client_sendjob {
 	my $socket = shift;
-	my $id = shift;
+	my $name = shift;
 	my $job = shift;
 
-	verbose "Client $id: sending job";
+	my $jobname = $job;
+	$jobname =~ s/^$runpath//;
+
+	verbose "Client $name: sending job";
 	$socket->send($job);
 }
 
@@ -441,16 +447,16 @@ sub client_sendjob {
 # Send FINO message to client and receives their acknowledgement
 sub client_bye {
 	my $socket = shift;
-	my $id = shift;
+	my $name = shift;
 
-	verbose "Client $id: no more jobs to run";
-	verbose "Client $id: sending FINO message";
+	verbose "Client $name: no more jobs to run";
+	verbose "Client $name: sending FINO message";
 	$socket->send('FINO');
 
-	verbose "Client $id: waiting for acknowledgment";
+	verbose "Client $name: waiting for acknowledgment";
 	my $msg;
 	$socket->recv($msg, 1024);
-	verbose "Client $id: received '$msg'";
+	verbose "Client $name: received '$msg'";
 	return $msg eq "KOMPRENAS";
 }
 
@@ -466,19 +472,31 @@ sub endthread {
 sub clientloop {
 	my $socket = shift;
 	my $id = shift;
+	my $name = shift;
 
-	(endthread and return) unless client_hail($socket, $id);
+	my $name = client_hail($socket, $id);
+	(endthread and return) unless defined $name;
 
 	while (1) {
-		(endthread and return) unless client_readjobrequest($socket, $id);
+		(endthread and return) unless client_readjobrequest($socket, $name);
 		
-		verbose "Client $id: requests a job";
-		my $nextjob = $jobqueue->dequeue();
+		verbose "Client $name: requested a job";
+		my $nextjob = getnextjob();
 		last unless defined $nextjob;
 
-		client_sendjob($socket, $id, $nextjob);
+		client_sendjob($socket, $name, $nextjob);
 	}
 
-	client_bye($socket, $id);
+	client_bye($socket, $name);
 	endthread;
+}
+
+
+# Return the next undone job
+sub getnextjob {
+	while ($jobqueue->pending()) {
+		my $candidate = $jobqueue->dequeue();
+		return $candidate unless donejob($candidate);
+	}
+	return undef;
 }

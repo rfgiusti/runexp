@@ -32,6 +32,7 @@ my $basedir = undef;
 my $stopparsing = 0;
 my $serveraddress = undef;
 my $serverport = undef;
+my $hostname = undef;
 my @args = @ARGV;
 while (@args) {
 	my $arg = shift @args;
@@ -71,6 +72,12 @@ while (@args) {
 		$serverport =~ s/^:// if defined $serverport;
 		print "$serveraddress $serverport\n";
 	}
+	elsif ($arg eq "-h") {
+		my $next = shift @args;
+		die "Missing value for option -h\n" unless defined $next;
+		$hostname = $next;
+		print "Hostname changed to $hostname by command line argument\n";
+	}
 	elsif ($arg eq "--help") {
 		my $me = $0 || "runex";
 		$me =~ s!.*/!!;
@@ -92,12 +99,13 @@ Usage:
 	-r <RUNPATH>
 		   Specify the directory where jobs should be looked for. Each
 		   job either a .m or a .sh file. The default value for this
-		   option is <BASEDIR>/runs
+		   option is <BASEDIR>/runs.
 	-o <OUTPUTPATH>
 		   Specify the directory where the job outputs will be written.
 		   When executed, the standard output and the standard error
 		   output will be redicted to a file in this directory. The
-		   default value for this option is <BASEDIR>/outputs
+		   default value for this option is <BASEDIR>/outputs.
+	-h <NAME>  Use <NAME> as hostname instead of system name.
 	-v         Print detailed information.
 	
 This is a 'works-for-me' kind of system. It works for me, right now, and that's
@@ -149,6 +157,9 @@ else {
 $path =~ s{/$}{};
 my $runpath = "$path/$runsubpath";
 my $outpath = "$path/$outsubpath";
+
+$hostname = `hostname -s` unless defined $hostname;
+die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0-9]+$/;
 
 die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
 die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
@@ -252,7 +263,7 @@ sub hail_server {
 	my $serversocket = shift;
 
 	verbose "Sending server the 'SALUTON' hail";
-	$serversocket->send("SALUTON");
+	$serversocket->send("SALUTON; MI $hostname");
 
 	verbose "Waiting for protocol version";
 	my $msg;

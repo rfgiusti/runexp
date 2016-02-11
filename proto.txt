@@ -16,7 +16,8 @@ STAGE 1
 Server-side
 
 	1. Wait for a connection
-	2. When a client connects, wait for the hail "SALUTON"
+	2. When a client connects, wait for the hail "SALUTON; MI <HOSTNAME>".
+	   Proceed to use <HOSTNAME> as this client's identifier
 	3. If a different message is received, terminate the connection
 	4. Write "VERSIO <PROTOCOL VERSION>" on the client socket
 	5. Wait for client acknowledge with the message "KOMPRENAS"
@@ -26,7 +27,7 @@ Server-side
 Client-side
 
 	1. Connect to the server
-	2. Send the hail "SALUTON"
+	2. Send the hail "SALUTON; MI <HOSTNAME>"
 	3. Waits for protocol version
 	4. If server send the message "VERSIO <PROTOCOL VERSION>" and the version
 	   number is acceptable, move to step 5. Otherwise, kill the connection
