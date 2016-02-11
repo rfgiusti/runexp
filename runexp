@@ -12,10 +12,11 @@ use threads::shared;
 my $PROTOCOL_VERSION = 1.0;
 
 # Print detailed information if running verbosely
-my $verbose = 0;
+my $verbose :shared = 0;
 sub verbose {
 	return 1 unless $verbose;
 
+	lock($verbose);
 	my $msg = shift;
 	
 	my $time = `date "+%b %d %T"`;
@@ -248,10 +249,17 @@ sub runandlog {
 
 	printrun($longname);
 
+	verbose "Job info";
+	verbose "  name   : $longname";
+	verbose "  output : $output";
+	verbose "  cmdline: $cmdline";
+
 	my $starttime = `date`;
 	chomp $starttime;
+	verbose "Running job $longname";
 	my $progoutput = `$cmdline`;
 	my $progstatus = $?;
+	verbose "Finished job $longname";
 	my $endtime = `date`;
 	chomp $endtime;
 
@@ -278,7 +286,10 @@ sub runmatlab {
 		return;
 	}
 
-	my $cmdline = "matlab -singleCompThread -nodesktop -r \"addpath('$jobdir'); $shortname; quit;\"";
+	print "<<";
+	my $matlabcmd ="try; $shortname; catch e, fprintf('Failed: %s\\n', e.message); end";
+	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"addpath('$jobdir'); $matlabcmd; quit;\"";
+	print ">>\n";
 	runandlog($longname, $cmdline, $output);
 }
 
@@ -310,7 +321,7 @@ sub runjob {
 
 	# Get the job directory (full path)
 	my $jobdir = $job;
-	$jobdir =~ s{.*/}{};
+	$jobdir =~ s{(.*/)[^/]+}{$1};
 
 	# If the job has an extension, use it as job type
 	my $type = $job =~ /\.[^.]+/ ? $& : '';

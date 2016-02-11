@@ -254,6 +254,7 @@ while ($runningthreads) {
 	verbose "Running threads: $runningthreads";
 	sleep 1;
 }
+print "Done!\n";
 
 for my $socket (@sockets) {
 	$socket->close();
