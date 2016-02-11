@@ -401,6 +401,37 @@ sub client_hail {
 }
 
 
+# Wait for a client to send a request for jobs
+sub client_readjobrequest {
+	my $socket = shift;
+	my $id = shift;
+	my $msg;
+
+	verbose "Client $id: waiting for job request";
+	$socket->recv($msg, 1024);
+
+	verbose "Cliend $id: received message '$msg'";
+	$msg =~ /^PETAS (\d+)$/ or return undef;
+	return $1;
+}
+
+
+
+# Send a list of jobs to the client
+sub client_sendjobs {
+	my $socket = shift;
+	my $id = shift;
+	my @jobs = @_;
+
+	verbose "Client $id: sending " . scalar(@jobs) . " job(s)";
+	my $msg = join("\n", @jobs);
+	$socket->send($msg);
+
+	verbose "Client $id: sending 'PROCEDU' message";
+	$socket->send("PROCEDU");
+}
+
+
 # Should be called before a thread is finished
 sub endthread {
 	lock($runningthreads);
@@ -408,13 +439,30 @@ sub endthread {
 	return 1;
 }
 
-
 sub clientloop {
 	my $socket = shift;
 	my $id = shift;
 
 	(endthread and return) unless client_hail($socket, $id);
-	print "Client accepted connection\n";
+
+	while (1) {
+		my $requestsize = client_readjobrequest($socket, $id);
+		(endthread and return) unless defined $requestsize;
+		verbose "Client $id: requests $requestsize jobs";
+
+		my @jobstorun;
+		while ($requestsize--) {
+			my $nextjob = $jobqueue->dequeue();
+			last unless defined $nextjob;
+			push @jobstorun, $nextjob;
+		}
+
+		last unless scalar @jobstorun;
+
+		client_sendjobs($socket, $id, @jobstorun);
+	}
+
+	verbose "Client $id: no more jobs to run";
 
 	endthread;
 }

@@ -158,12 +158,67 @@ my $server = IO::Socket::INET->new(
 	Proto    => 'tcp',
 ) or die "Error connecting to server at $serveraddress:$serverport: $!\n";
 
+
+
 hail_server($server);
+while (1) {
+	my $reqsize = freeworkers();
+	my @newjobs = askforjobs($reqsize);
+	last unless scalar (@newjobs);
+	for my $job (@newjobs) {
+		runjob($job);
+	}
+}
+
+print "No more jobs to run\n";
 
 
 
 ###################
 
+
+# Run a new job
+sub runjob {
+	my $job = shift;
+
+	print "Running job '$job'\n";
+
+	# Test code: just run the job for 1 second
+	sleep 1;
+}
+
+
+# Return the number of free workers
+sub freeworkers {
+	# Test code: only run 1 at a time
+	return 1;
+}
+
+
+# Ask server for jobs
+sub askforjobs {
+	my $reqsize = shift;
+	my $msg;
+
+	$msg = "PETAS $reqsize";
+	verbose "Sending server the message '$msg'";
+	$server->send($msg);
+
+	verbose "Waiting for jobs from the server";
+	$server->recv($msg, 1024);
+
+	return () if $msg eq "FINO";
+
+	my @jobs = split /\n/, $msg;
+	verbose "Waiting for server to give the OK";
+	$server->recv($msg, 1024);
+	die "Bad message: '$msg'" unless $msg eq "PROCEDU";
+
+	return @jobs;
+}
+
+
+# Handshake server
 sub hail_server {
 	my $server = shift;
 
