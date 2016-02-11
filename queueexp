@@ -5,6 +5,7 @@ use strict;
 use Cwd qw(getcwd abs_path);
 use File::Path qw(make_path);
 use IO::Socket::INET;
+use IO::Select;
 use threads;
 use threads::shared;
 use Thread::Queue;
@@ -220,28 +221,39 @@ my $serversocket = IO::Socket::INET->new(
 	Listen    => 5,
 	ReuseAddr => 1,
 ) or die "Error opening server on port $port: $!\n";
+my $select = IO::Select->new($serversocket);
 
 my $jobqueue = makejobqueue(\@jobs);
 my $runningthreads :shared = 0;
 my @sockets;
-while (1) {
-	verbose "Waiting for connections";
-	my $client = $serversocket->accept();
-	my $remoteaddr = $client->peerhost();
-	my $remoteport = $client->peerport();
-	my $clientid = scalar @sockets;
-	verbose "Accepted client #$clientid from $remoteaddr:$remoteport";
+while ($jobqueue->pending()) {
+	my @ready = $select->can_read(1);
+	if (scalar (@ready)) {
+		verbose "select returned a list of " . scalar (@ready) . " objects";
+		verbose "select->count == " . $select->count();
 
-	{
-		lock($runningthreads);
-		$runningthreads++;
+		my $client = $serversocket->accept();
+		my $remoteaddr = $client->peerhost();
+		my $remoteport = $client->peerport();
+		my $clientid = scalar @sockets;
+		verbose "Accepted client #$clientid from $remoteaddr:$remoteport";
+
+		{
+			lock($runningthreads);
+			$runningthreads++;
+			verbose "Running threads: $runningthreads";
+		}
+		threads->create(\&clientloop, $client, $clientid)->detach();
+		push @sockets, $client;
 	}
-	threads->create(\&clientloop, $client, $clientid)->detach();
-	push @sockets, $client;
+	else {
+		verbose "Nothing to select yet";
+	}
 }
 print "All jobs were spawned.\n";
 print "Waiting for clients to disconnect.\n";
 while ($runningthreads) {
+	verbose "Running threads: $runningthreads";
 	sleep 1;
 }
 
@@ -455,6 +467,7 @@ sub endthread {
 	$runningthreads--;
 	return 1;
 }
+
 
 sub clientloop {
 	my $socket = shift;
