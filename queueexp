@@ -9,7 +9,7 @@ use IO::Select;
 use threads;
 use threads::shared;
 use Thread::Queue;
-use rxplib qw(readconfig);
+use rxplib::config qw(readconfig);
 
 $| = 1;
 

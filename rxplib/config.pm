@@ -1,4 +1,4 @@
-package rxplib;
+package rxplib::config;
 
 use strict;
 

@@ -7,7 +7,7 @@ use File::Path qw(make_path);
 use IO::Socket::INET;
 use threads;
 use threads::shared;
-use rxplib qw(readconfig);
+use rxplib::config qw(readconfig);
 
 $| = 1;
 
