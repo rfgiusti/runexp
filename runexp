@@ -179,6 +179,10 @@ for my $worker (@workers) {
 	$worker->join();
 }
 
+# When we have finished, properly end communications
+bye_server($serversocket);
+
+
 
 ###################
 
@@ -265,5 +269,14 @@ sub hail_server {
 	die "Bad protocol version: $msg\n" unless $msg == 1.0;
 
 	verbose "Version accepted. Sending server acknowledgement message";
+	$serversocket->send("KOMPRENAS");
+}
+
+
+# Finish conversation with server
+sub bye_server {
+	my $serversocket = shift;
+
+	verbose "Sending server the 'KOMPRENAS' message";
 	$serversocket->send("KOMPRENAS");
 }
