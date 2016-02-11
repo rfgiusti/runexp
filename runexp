@@ -186,7 +186,7 @@ for my $key (keys %conf) {
 	}
 }
 
-$hostname = `hostname -s` unless defined $hostname;
+($hostname = `hostname -s`, chomp $hostname) unless defined $hostname;
 die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0-9]+$/;
 
 # The commbusy flag is used to indicate that a thread is trying to communicate with the server. We
