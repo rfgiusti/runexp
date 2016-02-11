@@ -14,7 +14,7 @@ my $PROTOCOL_VERSION = 1.0;
 # Print detailed information if running verbosely
 my $verbose = 0;
 sub verbose {
-	return unless $verbose;
+	return 1 unless $verbose;
 
 	my $msg = shift;
 	
@@ -22,6 +22,8 @@ sub verbose {
 	chomp $time;
 
 	printf "$time [ INFO ] $msg\n";
+
+	return 1;
 }
 
 # Check arguments and set default paths
