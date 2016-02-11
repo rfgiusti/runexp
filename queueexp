@@ -11,6 +11,8 @@ use threads::shared;
 use Thread::Queue;
 use rxplib qw(readconfig);
 
+$| = 1;
+
 # Communication protocol version
 my $PROTOCOL_VERSION = 1.0;
 
