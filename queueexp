@@ -229,9 +229,6 @@ my @sockets;
 while ($jobqueue->pending()) {
 	my @ready = $select->can_read(1);
 	if (scalar (@ready)) {
-		verbose "select returned a list of " . scalar (@ready) . " objects";
-		verbose "select->count == " . $select->count();
-
 		my $client = $serversocket->accept();
 		my $remoteaddr = $client->peerhost();
 		my $remoteport = $client->peerport();
@@ -246,9 +243,6 @@ while ($jobqueue->pending()) {
 		threads->create(\&clientloop, $client, $clientid)->detach();
 		push @sockets, $client;
 	}
-	else {
-		verbose "Nothing to select yet";
-	}
 }
 print "All jobs were spawned.\n";
 print "Waiting for clients to disconnect.\n";
@@ -256,6 +250,11 @@ while ($runningthreads) {
 	verbose "Running threads: $runningthreads";
 	sleep 1;
 }
+
+for my $socket (@sockets) {
+	$socket->close();
+}
+$serversocket->close();
 
 
 ################

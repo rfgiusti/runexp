@@ -209,8 +209,8 @@ sub runjob {
 
 	print "Running job '$job'\n";
 
-	# Test code: just run the job for 1 second
-	sleep 1;
+	# Test code: just run the job for a while
+	sleep 2;
 }
 
 
