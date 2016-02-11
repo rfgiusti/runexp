@@ -5,6 +5,8 @@ use strict;
 use Cwd qw(getcwd abs_path);
 use File::Path qw(make_path);
 use IO::Socket::INET;
+use threads;
+use threads::shared;
 
 # Protocol version
 my $PROTOCOL_VERSION = 1.0;
@@ -151,30 +153,50 @@ my $outpath = "$path/$outsubpath";
 die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
 die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
 
+# The commbusy flag is used to indicate that a thread is trying to communicate with the server. We
+# lock this variable because otherwise we would have to lock $masterstop and $serversocket
+my $commbusy :shared = 0;
+
+# If the shared variable masterstop is set to 1, then all workers will cease requesting new jobs
+my $masterstop :shared = 0;
+
+# Try to connect to and hail the server
 verbose "Connecting to server at $serveraddress:$serverport";
-my $server = IO::Socket::INET->new(
+my $serversocket = IO::Socket::INET->new(
 	PeerAddr => $serveraddress,
 	PeerPort => $serverport,
 	Proto    => 'tcp',
 ) or die "Error connecting to server at $serveraddress:$serverport: $!\n";
+hail_server($serversocket);
 
-
-
-hail_server($server);
-while (1) {
-	my $reqsize = freeworkers();
-	my @newjobs = askforjobs($reqsize);
-	last unless scalar (@newjobs);
-	for my $job (@newjobs) {
-		runjob($job);
-	}
+# Create workers and wait for them to finish
+my @workers;
+for my $i (1 .. $maxjobs) {
+	my $worker = threads->create(\&workerloop, $i, $serversocket);
+	push @workers, $worker;
 }
-
-print "No more jobs to run\n";
-
+for my $worker (@workers) {
+	$worker->join();
+}
 
 
 ###################
+
+
+
+sub workerloop {
+	my $id = shift;
+	my $serversocket = shift;
+
+	verbose "Worker $id started";
+
+	while (1) {
+		my @jobs = askforjobs($id, $serversocket);
+		(verbose "Worker $id: finished" and return) unless scalar(@jobs);
+		verbose "Worker $id: got a new job -- $jobs[0]";
+		runjob($jobs[0]);
+	}
+}
 
 
 # Run a new job
@@ -188,51 +210,60 @@ sub runjob {
 }
 
 
-# Return the number of free workers
-sub freeworkers {
-	# Test code: only run 1 at a time
-	return 1;
-}
-
-
 # Ask server for jobs
 sub askforjobs {
-	my $reqsize = shift;
+	my $id = shift;
+	my $serversocket = shift;
+	my $reqsize = 1;
 	my $msg;
 
+	# Lock the communication flag
+	verbose "Worker $id: trying to get lock of communications";
+	lock($commbusy);
+	verbose "Worker $id: I have the lock";
+
+	# If another worker received a FINO message, then there are no more jobs
+	(verbose "Worker $id: MASTERSTOP raised" and return ()) if $masterstop;
+
 	$msg = "PETAS $reqsize";
-	verbose "Sending server the message '$msg'";
-	$server->send($msg);
+	verbose "Worker $id: sending server the message '$msg'";
+	$serversocket->send($msg);
 
-	verbose "Waiting for jobs from the server";
-	$server->recv($msg, 1024);
+	verbose "Worker $id: waiting for jobs from the server";
+	$serversocket->recv($msg, 1024);
+	verbose "Worker $id: received message '$msg'";
 
-	return () if $msg eq "FINO";
+	if ($msg eq "FINO") {
+		verbose "Worker $id: raising MASTERSTOP";
+		$masterstop = 1;
+		return ();
+	}
 
 	my @jobs = split /\n/, $msg;
-	verbose "Waiting for server to give the OK";
-	$server->recv($msg, 1024);
-	die "Bad message: '$msg'" unless $msg eq "PROCEDU";
+	verbose "Worker $id: waiting for server to give the OK";
+	$serversocket->recv($msg, 1024);
+	die "Worker $id: bad message -- '$msg'" unless $msg eq "PROCEDU";
 
 	return @jobs;
 }
 
 
-# Handshake server
+# Handshake server: this is executed before workers are created, so there is no
+# need to lock anything
 sub hail_server {
-	my $server = shift;
+	my $serversocket = shift;
 
 	verbose "Sending server the 'SALUTON' hail";
-	$server->send("SALUTON");
+	$serversocket->send("SALUTON");
 
 	verbose "Waiting for protocol version";
 	my $msg;
-	$server->recv($msg, 1024);
+	$serversocket->recv($msg, 1024);
 	verbose "Received version string '$msg'";
 	die "Bad protocol version: $msg\n" unless $msg =~ /^VERSIO \d+(.\d+)?$/;
 	$msg =~ s/^VERSIO //;
 	die "Bad protocol version: $msg\n" unless $msg == 1.0;
 
 	verbose "Version accepted. Sending server acknowledgement message";
-	$server->send("KOMPRENAS");
+	$serversocket->send("KOMPRENAS");
 }
