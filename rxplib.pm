@@ -6,9 +6,7 @@ require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(readconfig);
 
-use File::HomeDir;
-
-my $home = File::HomeDir->my_home;
+my $home = $ENV{HOME};
 
 sub readconfig {
 	return () unless -f "$home/.runexp";

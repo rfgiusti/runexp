@@ -162,6 +162,10 @@ my $runpath = "$path/$runsubpath";
 my $outpath = "$path/$outsubpath";
 $runpath =~ s{/$}{};
 $outpath =~ s{/$}{};
+
+die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
+die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
+
 die "Can't find runs directory at $runpath\n" unless -d $runpath;
 die "Can't find outputs directory at $outpath\n" unless -d $outpath;
 
@@ -184,9 +188,6 @@ for my $key (keys %conf) {
 
 $hostname = `hostname -s` unless defined $hostname;
 die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0-9]+$/;
-
-die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
-die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
 
 # The commbusy flag is used to indicate that a thread is trying to communicate with the server. We
 # lock this variable because otherwise we would have to lock $masterstop and $serversocket
