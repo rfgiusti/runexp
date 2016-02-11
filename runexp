@@ -7,6 +7,7 @@ use File::Path qw(make_path);
 use IO::Socket::INET;
 use threads;
 use threads::shared;
+use rxplib qw(readconfig);
 
 # Protocol version
 my $PROTOCOL_VERSION = 1.0;
@@ -163,6 +164,23 @@ $runpath =~ s{/$}{};
 $outpath =~ s{/$}{};
 die "Can't find runs directory at $runpath\n" unless -d $runpath;
 die "Can't find outputs directory at $outpath\n" unless -d $outpath;
+
+# Read configurations from file
+my %conf = readconfig();
+for my $key (keys %conf) {
+	if ($key eq "port" && !defined $serverport) {
+		$serverport = $conf{$key};
+		print "Using port $serverport as specified from config file\n";
+	}
+	elsif ($key eq "qmanager" && !defined $serveraddress) {
+		$serveraddress = $conf{$key};
+		print "Using server address $serveraddress as specified from config file\n";
+	}
+	elsif ($key eq "hostname" && !defined $hostname) {
+		$hostname = $conf{$key};
+		print "Using hostname $hostname as specified from config file\n";
+	}
+}
 
 $hostname = `hostname -s` unless defined $hostname;
 die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0-9]+$/;

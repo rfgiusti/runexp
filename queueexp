@@ -9,6 +9,7 @@ use IO::Select;
 use threads;
 use threads::shared;
 use Thread::Queue;
+use rxplib qw(readconfig);
 
 # Communication protocol version
 my $PROTOCOL_VERSION = 1.0;
@@ -159,9 +160,18 @@ $outpath =~ s{/$}{};
 my $donetest = "$outpath/runtest.exp";   # optional external program to check if an experiment was run
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
+die "Runs directory not found in $runpath\n" unless -d $runpath;
+
+# Check if the configuration file has options that we need checking
+my %conf = readconfig();
+for my $key (keys %conf) {
+	if ($key eq "port" && !defined $port) {
+		$port = $conf{port};
+		print "Using port $port as specified from config file\n";
+	}
+}
 
 die "No port to listen to specified\n" unless defined $port;
-die "Runs directory not found in $runpath\n" unless -d $runpath;
 
 # Search for jobs in the runpath and its sub directories, checks if all required directories
 # exist in the ouput path as well
