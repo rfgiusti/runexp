@@ -7,6 +7,7 @@ use File::Path qw(make_path);
 use IO::Socket::INET;
 use threads;
 use threads::shared;
+use Thread::Queue;
 
 # Communication protocol version
 my $PROTOCOL_VERSION = 1.0;
@@ -220,6 +221,7 @@ my $serversocket = IO::Socket::INET->new(
 	ReuseAddr => 1,
 ) or die "Error opening server on port $port: $!\n";
 
+my $jobqueue = makejobqueue(\@jobs);
 my $runningthreads :shared = 0;
 my @sockets;
 while (1) {
@@ -245,6 +247,21 @@ while ($runningthreads) {
 
 
 ################
+
+
+# Return the job list in a thread-safe job queue
+sub makejobqueue {
+	my $jobs = shift;
+	my $queue = Thread::Queue->new;
+
+	for my $job (@$jobs) {
+		$queue->enqueue($job);
+	}
+	$queue->end();
+
+	return $queue;
+}
+
 
 # Get all files with extension specified by $ext in the specified directory. $ext is a pipe-separated list
 sub getfiles {
