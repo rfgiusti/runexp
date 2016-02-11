@@ -154,6 +154,8 @@ else {
 $path =~ s{/$}{};
 my $runpath = "$path/$runsubpath";
 my $outpath = "$path/$outsubpath";
+$runpath =~ s{/$}{};
+$outpath =~ s{/$}{};
 my $donetest = "$outpath/runtest.exp";   # optional external program to check if an experiment was run
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
@@ -169,7 +171,7 @@ for my $subdir (@tree) {
 	# Remove the run path from the directory name, search for the required directory in
 	# the outputs dir
 	my $outputdir = $subdir;
-	$outputdir =~ s{^$runpath/?}{$outpath/};
+	$outputdir =~ s{^$runpath}{$outpath};
 	if (! -d $outputdir) {
 		my $errors;
 		make_path($outputdir, {verbose => 0, error => \$errors});
@@ -183,12 +185,12 @@ for my $subdir (@tree) {
 }
 die "There are no jobs here.\n" unless scalar(@jobs);
 
-my $totaljobs = @jobs;
-my $ranjobs = 0;
+my $totaljobs :shared = scalar(@jobs);
+my $ranjobs :shared = 0;
 print "There are $totaljobs jobs here.\n";
 
 @jobs = grep(!donejob($_), @jobs);
-my $ranjobs = $totaljobs - @jobs;
+$ranjobs = $totaljobs - @jobs;
 if (!@jobs) {
 	print "I have already run everything. Nothing else to do here.\n";
 	exit;
@@ -327,12 +329,19 @@ sub printfail {
 
 # Print information before running a job
 sub printrun {
-	my $ranpct = shift;
-	my $jobname = shift;
+	my $job = shift;
 	my $host = shift;
 
+	my $jobname = $job;
+	$jobname =~ s{^$runpath/}{};
+	$jobname =~ s{\.[^.]+$}{};
+	
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
+
+	lock($ranjobs);
+	$ranjobs++;
+	my $ranpct = $ranjobs / $totaljobs;
 
 	printf "$time [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
 }
@@ -345,7 +354,7 @@ sub donejob {
 	verbose "Checking if job '$jobfile' is done";
 
 	my $resfile = $jobfile;
-	$resfile =~ s{^$runpath/}{$outpath/};
+	$resfile =~ s{^$runpath}{$outpath};
 	$resfile =~ s{\.[^.]*$}{.res};
 	verbose "Searching output file '$resfile'";
 	
@@ -487,6 +496,7 @@ sub clientloop {
 		last unless defined $nextjob;
 
 		client_sendjob($socket, $name, $nextjob);
+		printrun($nextjob, $name);
 	}
 
 	client_bye($socket, $name);

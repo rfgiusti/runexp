@@ -159,6 +159,8 @@ else {
 $path =~ s{/$}{};
 my $runpath = "$path/$runsubpath";
 my $outpath = "$path/$outsubpath";
+$runpath =~ s{/$}{};
+$outpath =~ s{/$}{};
 
 $hostname = `hostname -s` unless defined $hostname;
 die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0-9]+$/;
@@ -217,14 +219,114 @@ sub workerloop {
 }
 
 
+# Print information before running a job
+sub printrun {
+        my $jobname = shift;
+
+        my $time = `date "+%b %d %T"`;
+        chomp $time;
+
+        printf "$time [$hostname] Running $jobname\n";
+}
+
+
+# Print a fail log
+sub printfail {
+	my $failmessage = shift;
+        
+	my $time = `date "+%b %d %T"`;
+        chomp $time;
+
+        printf "$time [$hostname] ERROR: $failmessage\n";
+}
+
+
+sub runandlog {
+	my $longname = shift;
+	my $cmdline = shift;
+	my $output = shift;
+
+	printrun($longname);
+
+	my $starttime = `date`;
+	chomp $starttime;
+	my $progoutput = `$cmdline`;
+	my $progstatus = $?;
+	my $endtime = `date`;
+	chomp $endtime;
+
+	open OUTPUT, ">$output" or die "Error opening $output";
+	print OUTPUT "$starttime -- [$hostname] Running $longname\n";
+	print OUTPUT "> $cmdline\n";
+	print OUTPUT "$endtime -- Finished running\n";
+	print OUTPUT "Program exited with status $progstatus\n";
+	print OUTPUT "Program output follows\n";
+	print OUTPUT "\n";
+	print OUTPUT $progoutput;
+	close OUTPUT;
+}
+
+# Run a MATLAB job
+sub runmatlab {
+	my $longname = shift;
+	my $shortname = shift;
+	my $jobdir = shift;
+	my $output = shift;
+
+	if (-f "$shortname.m") {
+		printfail "A script named '$shortname.m' in the current working dir causes conflict";
+		return;
+	}
+
+	my $cmdline = "matlab -singleCompThread -nodesktop -r \"addpath('$jobdir'); $shortname; quit;\"";
+	runandlog($longname, $cmdline, $output);
+}
+
+
+# Run a bash job
+sub runbash {
+	my $longname = shift;
+	my $job = shift;
+	my $output = shift;
+
+	my $cmdline = "bash '$job'";
+	runandlog($longname, $cmdline, $output);
+}
+
+
 # Run a new job
 sub runjob {
 	my $job = shift;
 
-	print "Running job '$job'\n";
+	# Separate /path/runs/subpath/job.ext into long name (subpath/job) and shortname (job)
+	$job =~ m{^$runpath/(.+)} or die "Can't match job '$job' against m{^$runpath/(.+)}";
+	my $longname = $1;
+	$longname =~ s{\.[^.]+$}{};
+	my $shortname = $longname;
+	$shortname =~ s{(.*/)?([^/]+)}{$2};
 
-	# Test code: just run the job for a while
-	sleep 2;
+	# Compose the output file path
+	my $output = "$outpath/$longname.res";
+
+	# Get the job directory (full path)
+	my $jobdir = $job;
+	$jobdir =~ s{.*/}{};
+
+	# If the job has an extension, use it as job type
+	my $type = $job =~ /\.[^.]+/ ? $& : '';
+
+	# Write the output file preamble
+
+
+	if ($type eq ".m") {
+		runmatlab($longname, $shortname, $jobdir, $output);
+	}
+	elsif ($type eq ".sh") {
+		runbash($longname, $job, $output);
+	}
+	else {
+		printfail("Invalid job type '$type'");
+	}
 }
 
 
