@@ -181,6 +181,7 @@ for my $worker (@workers) {
 
 # When we have finished, properly end communications
 bye_server($serversocket);
+$serversocket->close();
 
 
 
@@ -195,10 +196,10 @@ sub workerloop {
 	verbose "Worker $id started";
 
 	while (1) {
-		my @jobs = askforjobs($id, $serversocket);
-		(verbose "Worker $id: finished" and return) unless scalar(@jobs);
-		verbose "Worker $id: got a new job -- $jobs[0]";
-		runjob($jobs[0]);
+		my $job = askforjob($id, $serversocket);
+		(verbose "Worker $id: finished" and return) unless defined $job;
+		verbose "Worker $id: got a new job -- $job";
+		runjob($job);
 	}
 }
 
@@ -214,8 +215,8 @@ sub runjob {
 }
 
 
-# Ask server for jobs
-sub askforjobs {
+# Ask server for job
+sub askforjob {
 	my $id = shift;
 	my $serversocket = shift;
 	my $reqsize = 1;
@@ -227,28 +228,21 @@ sub askforjobs {
 	verbose "Worker $id: I have the lock";
 
 	# If another worker received a FINO message, then there are no more jobs
-	(verbose "Worker $id: MASTERSTOP raised" and return ()) if $masterstop;
+	(verbose "Worker $id: MASTERSTOP raised" and return undef) if $masterstop;
 
-	$msg = "PETAS $reqsize";
-	verbose "Worker $id: sending server the message '$msg'";
-	$serversocket->send($msg);
+	verbose "Worker $id: sending server the message 'PETO'";
+	$serversocket->send('PETO');
 
-	verbose "Worker $id: waiting for jobs from the server";
+	verbose "Worker $id: waiting for job from the server";
 	$serversocket->recv($msg, 1024);
 	verbose "Worker $id: received message '$msg'";
 
 	if ($msg eq "FINO") {
 		verbose "Worker $id: raising MASTERSTOP";
 		$masterstop = 1;
-		return ();
+		return undef;
 	}
-
-	my @jobs = split /\n/, $msg;
-	verbose "Worker $id: waiting for server to give the OK";
-	$serversocket->recv($msg, 1024);
-	die "Worker $id: bad message -- '$msg'" unless $msg eq "PROCEDU";
-
-	return @jobs;
+	return $msg;
 }
 
 

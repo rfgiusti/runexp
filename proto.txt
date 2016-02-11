@@ -39,28 +39,22 @@ STAGE 2
 
 Server-side
 
-	1. Wait for client to send a message
-	2. Message must be in the form "PETAS <NUMBER OF JOBS>"
-	3. If the server has no more jobs to run, go to step 7. Otherwise,
-	   continue the flow to step 4
-	4. Write the name of the next job into the client socket
-	5. Decrease <NUMBER OF JOBS>. If <NUMBER OF JOBS> is now zero, go to
-	   step 5, otherwise, go back to step 4
-	6. Write "PROCEDU" on the client socket. Go back to step 1
-	7. Send the message "FINO". Wait for client to reply
-	8. When client replies "KOMPRENAS", kill the connection
+	1. Wait for client to send message "PETO" requesting a job
+	2. If the server has no more jobs to run, go to step 4. Otherwise,
+	   continue the flow to step 3
+	3. Write the name of the next job into the client socket and go back to
+	   step 1
+	4. Send the message "FINO". Wait for client to reply
+	5. When client replies "KOMPRENAS", kill the connection
 
 Client-side
 
-	1. Check how many jobs can be executed at this time
-	2. Send a request to the server: "PETAS <NUMBER OF JOBS>"
-	3. Start a list of new incoming jobs
-	4. Read server socket
-	5. Server should have sent a job name; add job to the list
-	6. If instead of a job, server sent message "PROCEDU", move to step 7.
-	   If the message is "FINO", go to step 10. Otherwise go back to step 3
-	7. If list is not empty, launch the jobs informed by the server
-	8. Wait for one or more job(s) have finished. Go back to step 1
-	9. Wait for server to send the message "FINO"
-	10. Reply with "KOMPRENAS". The server will kill the connection
-	11. Wait until all jobs have finished executing 
+Workers run independently. Each worker does their own communication with the
+server. 
+
+	1. If the flag MASTERSTOP is raised, go to step 5
+	2. Send a request to the server "PETO"
+	3. If the server send a job, run the job, then go back to 1
+	4. If the server sent the message "FINO", go to step 5
+	5. If this is the last worker, send to the server the message
+	   "KOMPRENAS" in response to its "PETO". Close the connection

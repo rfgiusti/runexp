@@ -422,24 +422,19 @@ sub client_readjobrequest {
 	$socket->recv($msg, 1024);
 
 	verbose "Cliend $id: received message '$msg'";
-	$msg =~ /^PETAS (\d+)$/ or return undef;
-	return $1;
+	return $msg eq "PETO";
 }
 
 
 
-# Send a list of jobs to the client
-sub client_sendjobs {
+# Send a job to the client
+sub client_sendjob {
 	my $socket = shift;
 	my $id = shift;
-	my @jobs = @_;
+	my $job = shift;
 
-	verbose "Client $id: sending " . scalar(@jobs) . " job(s)";
-	my $msg = join("\n", @jobs);
-	$socket->send($msg);
-
-	verbose "Client $id: sending 'PROCEDU' message";
-	$socket->send("PROCEDU");
+	verbose "Client $id: sending job";
+	$socket->send($job);
 }
 
 
@@ -475,20 +470,13 @@ sub clientloop {
 	(endthread and return) unless client_hail($socket, $id);
 
 	while (1) {
-		my $requestsize = client_readjobrequest($socket, $id);
-		(endthread and return) unless defined $requestsize;
-		verbose "Client $id: requests $requestsize jobs";
+		(endthread and return) unless client_readjobrequest($socket, $id);
+		
+		verbose "Client $id: requests a job";
+		my $nextjob = $jobqueue->dequeue();
+		last unless defined $nextjob;
 
-		my @jobstorun;
-		while ($requestsize--) {
-			my $nextjob = $jobqueue->dequeue();
-			last unless defined $nextjob;
-			push @jobstorun, $nextjob;
-		}
-
-		last unless scalar @jobstorun;
-
-		client_sendjobs($socket, $id, @jobstorun);
+		client_sendjob($socket, $id, $nextjob);
 	}
 
 	client_bye($socket, $id);
