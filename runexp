@@ -73,7 +73,6 @@ while (@args) {
 		$serveraddress = $1;
 		$serverport = $2 if defined $2;
 		$serverport =~ s/^:// if defined $serverport;
-		print "$serveraddress $serverport\n";
 	}
 	elsif ($arg eq "-h") {
 		my $next = shift @args;
@@ -162,6 +161,8 @@ my $runpath = "$path/$runsubpath";
 my $outpath = "$path/$outsubpath";
 $runpath =~ s{/$}{};
 $outpath =~ s{/$}{};
+die "Can't find runs directory at $runpath\n" unless -d $runpath;
+die "Can't find outputs directory at $outpath\n" unless -d $outpath;
 
 $hostname = `hostname -s` unless defined $hostname;
 die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0-9]+$/;
@@ -191,6 +192,7 @@ for my $i (1 .. $maxjobs) {
 	my $worker = threads->create(\&workerloop, $i, $serversocket);
 	push @workers, $worker;
 }
+print "No more new jobs to run. Waiting for current jobs to finish...\n";
 for my $worker (@workers) {
 	$worker->join();
 }
@@ -198,6 +200,7 @@ for my $worker (@workers) {
 # When we have finished, properly end communications
 bye_server($serversocket);
 $serversocket->close();
+print "Done!\n";
 
 
 
