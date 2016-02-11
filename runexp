@@ -4,6 +4,10 @@ use strict;
 
 use Cwd qw(getcwd abs_path);
 use File::Path qw(make_path);
+use IO::Socket::INET;
+
+# Protocol version
+my $PROTOCOL_VERSION = 1.0;
 
 # Print detailed information if running verbosely
 my $verbose = 0;
@@ -24,6 +28,8 @@ my $runsubpath = 'runs';		# default jobs directory
 my $outsubpath = 'outputs';		# default outputs directory
 my $basedir = undef;
 my $stopparsing = 0;
+my $serveraddress = undef;
+my $serverport = undef;
 my @args = @ARGV;
 while (@args) {
 	my $arg = shift @args;
@@ -52,6 +58,16 @@ while (@args) {
 	elsif ($arg eq "-v") {
 		$verbose = 1;
 		verbose "Entered VERBOSE mode.";
+	}
+	elsif ($arg eq "-c") {
+		my $next = shift @args;
+		die "Missing value for option -c\n" unless defined $next;
+		die "Invalid connection info '$next'\n" unless $next =~ /^\d+(\.\d+){3}(:\d+)?$/;
+		$next =~ /^([^:]+)(:\d+)?$/;
+		$serveraddress = $1;
+		$serverport = $2 if defined $2;
+		$serverport =~ s/^:// if defined $serverport;
+		print "$serveraddress $serverport\n";
 	}
 	elsif ($arg eq "--help") {
 		my $me = $0 || "runex";
@@ -134,3 +150,34 @@ my $outpath = "$path/$outsubpath";
 
 die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
 die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
+
+verbose "Connecting to server at $serveraddress:$serverport";
+my $server = IO::Socket::INET->new(
+	PeerAddr => $serveraddress,
+	PeerPort => $serverport,
+	Proto    => 'tcp',
+) or die "Error connecting to server at $serveraddress:$serverport: $!\n";
+
+hail_server($server);
+
+
+
+###################
+
+sub hail_server {
+	my $server = shift;
+
+	verbose "Sending server the 'SALUTON' hail";
+	$server->send("SALUTON");
+
+	verbose "Waiting for protocol version";
+	my $msg;
+	$server->recv($msg, 1024);
+	verbose "Received version string '$msg'";
+	die "Bad protocol version: $msg\n" unless $msg =~ /^VERSIO \d+(.\d+)?$/;
+	$msg =~ s/^VERSIO //;
+	die "Bad protocol version: $msg\n" unless $msg == 1.0;
+
+	verbose "Version accepted. Sending server acknowledgement message";
+	$server->send("KOMPRENAS");
+}

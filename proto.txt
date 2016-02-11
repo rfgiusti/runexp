@@ -19,7 +19,8 @@ Server-side
 	2. When a client connects, wait for the hail "SALUTON"
 	3. If a different message is received, terminate the connection
 	4. Write "VERSIO <PROTOCOL VERSION>" on the client socket
-	5. Start processing this client on STAGE 2, continue expecting other
+	5. Wait for client acknowledge with the message "KOMPRENAS"
+	6. Start processing this client on STAGE 2, continue expecting other
 	   clients on STAGE 1
 
 Client-side
@@ -30,7 +31,8 @@ Client-side
 	4. If server send the message "VERSIO <PROTOCOL VERSION>" and the version
 	   number is acceptable, move to step 5. Otherwise, kill the connection
 	   and terminate the execution
-	5. Move to STAGE 2
+	5. Send the message "KOMPRENAS"
+	6. Move to STAGE 2
 
 
 STAGE 2

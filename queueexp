@@ -5,6 +5,11 @@ use strict;
 use Cwd qw(getcwd abs_path);
 use File::Path qw(make_path);
 use IO::Socket::INET;
+use threads;
+use threads::shared;
+
+# Communication protocol version
+my $PROTOCOL_VERSION = 1.0;
 
 # Print detailed information if running verbosely
 my $verbose = 0;
@@ -149,8 +154,97 @@ my $donetest = "$outpath/runtest.exp";   # optional external program to check if
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
 
-my $serversocket;
 die "No port to listen to specified\n" unless defined $port;
+die "Runs directory not found in $runpath\n" unless -d $runpath;
+
+# Search for jobs in the runpath and its sub directories, checks if all required directories
+# exist in the ouput path as well
+my @tree = gettree($runpath, 'm|sh');
+my @jobs = ();
+for my $subdir (@tree) {
+	# Remove the run path from the directory name, search for the required directory in
+	# the outputs dir
+	my $outputdir = $subdir;
+	$outputdir =~ s{^$runpath/?}{$outpath/};
+	if (! -d $outputdir) {
+		my $errors;
+		make_path($outputdir, {verbose => 0, error => \$errors});
+		if (@$errors) {
+			die "Attempt to create directory and parent directories $outputdir failed:\n" .
+				join("\n", @$errors) . "\n";
+		}
+		print "Created output directory (and possibly parent directories) $outputdir\n";
+	}
+	push @jobs, getfiles($subdir, 'm|sh');
+}
+die "There are no jobs here.\n" unless scalar(@jobs);
+
+my $totaljobs = @jobs;
+my $ranjobs = 0;
+print "There are $totaljobs jobs here.\n";
+
+@jobs = grep(!donejob($_), @jobs);
+my $ranjobs = $totaljobs - @jobs;
+if (!@jobs) {
+	print "I have already run everything. Nothing else to do here.\n";
+	exit;
+}
+elsif ($ranjobs) {
+	printf "I have already run $ranjobs job%s. I will skip them.\n", ($ranjobs > 1 ? "s" : "");
+	printf "I now have " . (scalar @jobs) . " job%s to run.\n", (@jobs > 1 ? "s" : "");
+}
+else {
+	print "I did not do anything yet.\n";
+}
+
+# Job list may or may not be sorted. Do not assume anything. Unless option --randomize is supplied,
+# then the list should be sorted.
+if ($randomize) {
+	randomizejobs(\@jobs) if $randomize;
+}
+else {
+	@jobs = sort { $a cmp $b } @jobs;
+}
+
+if ($printjobs) {
+	print join("\n", @jobs) . "\n";
+	exit 0;
+}
+
+verbose "Opening server at port $port";
+my $serversocket = IO::Socket::INET->new(
+	LocalHost => '0.0.0.0',
+	LocalPort => $port,
+	Proto     => 'tcp',
+	Listen    => 5,
+	ReuseAddr => 1,
+) or die "Error opening server on port $port: $!\n";
+
+my $runningthreads :shared = 0;
+my @sockets;
+while (1) {
+	verbose "Waiting for connections";
+	my $client = $serversocket->accept();
+	my $remoteaddr = $client->peerhost();
+	my $remoteport = $client->peerport();
+	my $clientid = scalar @sockets;
+	verbose "Accepted client #$clientid from $remoteaddr:$remoteport";
+
+	{
+		lock($runningthreads);
+		$runningthreads++;
+	}
+	threads->create(\&clientloop, $client, $clientid)->detach();
+	push @sockets, $client;
+}
+print "All jobs were spawned.\n";
+print "Waiting for clients to disconnect.\n";
+while ($runningthreads) {
+	sleep 1;
+}
+
+
+################
 
 # Get all files with extension specified by $ext in the specified directory. $ext is a pipe-separated list
 sub getfiles {
@@ -213,6 +307,7 @@ sub printrun {
 	printf "$time [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
 }
 
+
 # Check if a job has already been executed. A job has been executed if its output file contains the string RES: or if
 # a verification application returns 1
 sub donejob {
@@ -264,79 +359,45 @@ sub randomizejobs {
 	}
 }
 
-die "Runs directory not found in $runpath\n" unless -d $runpath;
 
-# Search for jobs in the runpath and its sub directories, checks if all required directories
-# exist in the ouput path as well
-my @tree = gettree($runpath, 'm|sh');
-my @jobs = ();
-for my $subdir (@tree) {
-	# Remove the run path from the directory name, search for the required directory in
-	# the outputs dir
-	my $outputdir = $subdir;
-	$outputdir =~ s{^$runpath/?}{$outpath/};
-	if (! -d $outputdir) {
-		my $errors;
-		make_path($outputdir, {verbose => 0, error => \$errors});
-		if (@$errors) {
-			die "Attempt to create directory and parent directories $outputdir failed:\n" .
-				join("\n", @$errors) . "\n";
-		}
-		print "Created output directory (and possibly parent directories) $outputdir\n";
-	}
-	push @jobs, getfiles($subdir, 'm|sh');
-}
-die "There are no jobs here.\n" unless scalar(@jobs);
+# Receive the SALUTON message from the client and 
+sub client_hail {
+	my $socket = shift;
+	my $id = shift;
+	my $msg;
 
-my $totaljobs = @jobs;
-my $ranjobs = 0;
-print "There are $totaljobs jobs here.\n";
+	# Wait for cleint to send the HELLO message
+	verbose "Client $id: waiting 'SALUTON'";
+	$socket->recv($msg, 1024);
+	return 0 unless $msg eq "SALUTON";
 
-@jobs = grep(!donejob($_), @jobs);
-my $ranjobs = $totaljobs - @jobs;
-if (!@jobs) {
-	print "I have already run everything. Nothing else to do here.\n";
-	exit;
-}
-elsif ($ranjobs) {
-	printf "I have already run $ranjobs job%s. I will skip them.\n", ($ranjobs > 1 ? "s" : "");
-	printf "I now have " . (scalar @jobs) . " job%s to run.\n", (@jobs > 1 ? "s" : "");
-}
-else {
-	print "I did not do anything yet.\n";
+	# Send protocol version to client
+	verbose "Client $id: sending 'VERSIO'";
+	$socket->send(sprintf("VERSIO %.1f", $PROTOCOL_VERSION));	
+
+	# Wait for client to acknowledge
+	verbose "Client $id: waiting 'KOMPRENAS'";
+	$socket->recv($msg, 1024);
+	return 0 unless $msg eq "KOMPRENAS";
+
+	return 1;
 }
 
-# Job list may or may not be sorted. Do not assume anything. Unless option --randomize is supplied,
-# then the list should be sorted.
-if ($randomize) {
-	randomizejobs(\@jobs) if $randomize;
-}
-else {
-	@jobs = sort { $a cmp $b } @jobs;
-}
 
-if ($printjobs) {
-	print join("\n", @jobs) . "\n";
-	exit 0;
+# Should be called before a thread is finished
+sub endthread {
+	lock($runningthreads);
+	$runningthreads--;
+	return 1;
 }
 
-verbose "Opening server at port $port";
-$serversocket = IO::Socket::INET->new(
-	LocalHost => '0.0.0.0',
-	LocalPort => $port,
-	Proto     => 'tcp',
-	Listen    => 5,
-	ReuseAddr => 1,
-) or die "Error opening server on port $port: $!\n";
 
-while (1) {
-	verbose "Waiting for connections";
-	my $client = $serversocket->accept();
-	my $remoteaddr = $client->peerhost();
-	my $remoteport = $client->peerport();
-	verbose "Accepted client from $remoteaddr:$remoteport";
+sub clientloop {
+	my $socket = shift;
+	my $id = shift;
+
+	(endthread and return) unless client_hail($socket, $id);
+	print "Client accepted connection\n";
+
+	endthread;
 }
-print "All jobs were spawned. Over and out.\n";
-
-open STOPFILE, ">$runpath/master.stop";
-close STOPFILE;
