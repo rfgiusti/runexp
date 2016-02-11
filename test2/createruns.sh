@@ -6,4 +6,5 @@ rm -f outputs/*
 for i in {1..30}; do
 	sleeptime=$(( $RANDOM % 8 + 10 ))
 	echo "sleep $sleeptime" > "runs/run$i.sh"
+	echo "echo RES:done" >> "runs/run$i.sh"
 done

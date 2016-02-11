@@ -1,0 +1,61 @@
+Communication between manager and runners via sockets
+-----------------------------------------------------
+
+
+This drafts the communication protocol version 1.0
+
+
+STAGE
+
+1) Initialization
+2) Communication
+
+
+STAGE 1
+
+Server-side
+
+	1. Wait for a connection
+	2. When a client connects, wait for the hail "SALUTON; MI <HOSTNAME>".
+	   Proceed to use <HOSTNAME> as this client's identifier
+	3. If a different message is received, terminate the connection
+	4. Write "VERSIO <PROTOCOL VERSION>" on the client socket
+	5. Wait for client acknowledge with the message "KOMPRENAS"
+	6. Start processing this client on STAGE 2, continue expecting other
+	   clients on STAGE 1
+
+Client-side
+
+	1. Connect to the server
+	2. Send the hail "SALUTON; MI <HOSTNAME>"
+	3. Waits for protocol version
+	4. If server send the message "VERSIO <PROTOCOL VERSION>" and the version
+	   number is acceptable, move to step 5. Otherwise, kill the connection
+	   and terminate the execution
+	5. Send the message "KOMPRENAS"
+	6. Move to STAGE 2
+
+
+STAGE 2
+
+Server-side
+
+	1. Wait for client to send message "PETO" requesting a job
+	2. If the server has no more jobs to run, go to step 4. Otherwise,
+	   continue the flow to step 3
+	3. Write the name of the next job into the client socket and go back to
+	   step 1
+	4. Send the message "FINO". Wait for client to reply
+	5. When client replies "KOMPRENAS", kill the connection
+
+Client-side
+
+Workers run independently. Each worker does their own communication with the
+server. 
+
+	1. If the flag MASTERSTOP is raised, go to step 5
+	2. Send a request to the server "PETO"
+	3. If the server send a job, run the job, then go back to 1
+	4. If the server sent the message "FINO", go to step 5
+	5. If this is the last worker, send to the server the message
+	   "KOMPRENAS" in response to its "PETO". Close the connection

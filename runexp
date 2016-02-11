@@ -1,236 +1,426 @@
-#!/bin/bash
+#!/usr/bin/perl
 
-HOST=$(hostname -s)
-SLEEPTIME=1
-VERBOSE=0
+use strict;
 
-if [[ -f ~/.runexp.conf ]]; then
-	OLDHOST=$HOST
-	source ~/.runexp.conf
-	[[ "$OLDHOST" != "$HOST" ]] && echo "Hostname changed to '$HOST' by ~/.runexp.conf"
-fi
+use Cwd qw(getcwd abs_path);
+use File::Path qw(make_path);
+use IO::Socket::INET;
+use threads;
+use threads::shared;
+use rxplib qw(readconfig);
 
-MAXRUNNERS=$1
-if [[ "$MAXRUNNERS" == "" ]]; then
-	echo "Expected maximum number of jobs for this client"
-	exit
-fi
-if [[ ! $MAXRUNNERS -gt 0 ]]; then
-	echo "Number of runners \"$MAXRUNNERS\" is invalid"
-	exit;
-fi
+$| = 1;
 
-mypath=`pwd -P`
-runpath="$mypath/runs"
-outpath="$mypath/outputs"
+# Protocol version
+my $PROTOCOL_VERSION = 1.0;
 
-if [[ "$2" != "" ]]; then
-	echo "Overriding runs path to $mypath/$2"
-	runpath="$mypath/$2"
-fi
-if [[ "$3" != "" ]]; then
-	echo "Overriding output path to $mypath/$3"
-	outpath="$mypath/$3"
-fi
+# Print detailed information if running verbosely
+my $verbose :shared = 0;
+sub verbose {
+	return 1 unless $verbose;
 
-if [[ ! -d "$runpath" ]]; then
-	echo "Can't find run path '$runpath'"
-	exit
-fi
-if [[ ! -d "$outpath" ]]; then
-	echo "Can't find output path '$outpath'"
-	exit
-fi
-
-maxfile="$mypath/$HOST.maxrunners"
-
-# Keep track of jobs, one at a time
-pids=()
-jobnames=()
-startimes=()
-runningjobs=0
-
-verbose() {
-	if [[ "$VERBOSE" == "1" ]]; then
-		echo "`date "+%b %d %T"` -- $HOST] INFO: $1"
-	fi
-}
-verbose "Running in verbose mode"
-
-isover() {
-	if [[ -f "$runpath/master.stop" ]]; then
-		return 0;
-	else
-		return 1;
-	fi
-}
-
-writerunninginfo() {
-	infofile="$runpath/$HOST.info"
-	echo -n > $infofile
-	i=0
-	while [[ $i -lt $runningjobs ]]; do
-		echo ${jobnames[$i]} >> $infofile
-		echo ${starttimes[$i]} >> $infofile
-		i=$(( $i + 1 ))
-	done
-	sync
-}
-
-addjob() {
-	pids[$runningjobs]=$1
-	jobnames[$runningjobs]=$2
-	starttimes[$runningjobs]=$( date +%s )
-	verbose "Now tracking job with PID ${pids[$runningjobs]} (${jobnames[$runningjobs]})"
-	runningjobs=$(( $runningjobs + 1 ))
-}
-
-updaterunningjobs() {
-	from=0
-	to=0
-	removed=0
-	# Walk through list with two pointers, skipping jobs that are done
-	# Array never decreases, but it will always be very small
-	while [[ $from -lt $runningjobs ]]; do
-		if [[ ! -d /proc/${pids[$from]} ]]; then
-			from=$(( $from + 1 ))
-			removed=$(( $removed + 1 ))
-		fi
-		if [[ $from != $to ]]; then
-			verbose "Job with PID ${pids[$to]} (${jobnames[$to]}) is over"
-			pids[$to]=${pids[$from]}
-			jobnames[$to]=${jobnames[$from]}
-			starttimes[$to]=${starttimes[$from]}
-		fi
-		from=$(( $from + 1 ))
-		to=$(( $to + 1 ))
-	done
-	if [[ $removed > 0 ]]; then
-		runningjobs=$(( $runningjobs - $removed ))
-		writerunninginfo
-	fi
-}
-
-echo "I am the experiment runner in $HOST and I'm here to run your jobs"
-rm -f "$runpath/$HOST.req"
-rm -f "$runpath/$HOST.go"
-rm -f "$runpath/$HOST.info"
-rm -f "$runpath/$HOST.ready"
-verbose "Control files '$runpath/$HOST.{req,go,info,ready}' removed"
-
-while true; do
-	# Check if there is room for more jobs
-	while [[ $runningjobs -ge $MAXRUNNERS ]]; do
-		if [[ -f "$maxfile" ]]; then
-			newmax=`cat "$maxfile"`
-			if [[ $newmax -gt 0 ]]; then
-				echo "`date "+%b %d %T"` -- [$HOST] Maximum runners updated from $MAXRUNNERS to $newmax"
-				MAXRUNNERS=$newmax
-				rm "$maxfile"
-			else
-				echo "`date "+%b %d %T"` -- [$HOST] Maximum runners found, but content is invalid:"
-				cat "$maxfile"
-			fi		
-		fi
-		updaterunningjobs
-		sleep $SLEEPTIME
-	done
-
-	# Quit if no more jobs to run are available
-	isover && break
-
-	# Request some jobs
-	requestsize=$(( $MAXRUNNERS - $runningjobs ))
-	verbose "Preparing to request up to $requestsize job(s)"
+	lock($verbose);
+	my $msg = shift;
 	
-	# TODO: remove this ugly workaround
-	while [[ -f "$runpath/$HOST.req" ]]; do
-		# Request file should have been removed by the experiment
-		# runner. Why am I still seeing it?
-		verbose "File '$HOST.req' should not exist, but has been found. Waiting..."
-		sleep 1;
-	done
-	echo $requestsize > "$runpath/$HOST.req"
-	verbose "Written request file '$HOST.req' for up to $requestsize job(s)"
+	my $time = `date "+%b %d %T"`;
+	chomp $time;
 
-	# Attempt to ensure the file is written
-	# TODO: check for race condition here
-	# TODO: remove this ugly workaround
-	sync
-	while [[ -f "$runpath/$HOST.ready" ]]; do
-		verbose "Flag file '$HOST.ready' should not exist, but has been found. Waiting..."
-		sleep 1;
-	done
-	echo > "$runpath/$HOST.ready"
-	verbose "Written flag file '$HOST.ready'"
+	printf "$time [ INFO ] $msg\n";
 
-	# Wait for permission to go, unless the server suddenly finds out there are no more jobs to run
-	verbose "Waiting for manager to finish writing the job list"
-	while [[ ! -f "$runpath/$HOST.go" ]]; do
-		sleep 1
-		isover && break
-	done
-	if [[ ! -f "$runpath/$HOST.go" ]]; then
-		echo "`date "+%b %d %T"` -- [$HOST] Scratch that. There are no more jobs to run"
-		break
-	fi
+	return 1;
+}
 
-	# Run the received jobs
-	verbose "Checking job(s) from manager"
-	for job in `cat "$runpath/$HOST.job"`; do
-		jobshortname=`echo -n $job | sed 's!^.*/!!' | sed 's!\.[^.]*$!!'`
-		joblongname=`echo -n $job | sed 's!\.[^.]*$!!'`
-		jobdirpath="$runpath/`echo -n $job | sed 's!/\?[^/]\+$!!'`"
-		outfile="$outpath/$joblongname.res"
-		jobfile="$runpath/$job"
-		verbose "Got a job to run: '$job'"
-		verbose "   short name : '$jobshortname'"
-		verbose "   long name  : '$joblongname'"
-		verbose "   job dirpath: '$jobdirpath'"
-		verbose "   job file   : '$jobfile'"
-		verbose "   output file: '$outfile'"
+# Check arguments and set default paths
+my $maxjobs = undef;
+my $runsubpath = 'runs';		# default jobs directory
+my $outsubpath = 'outputs';		# default outputs directory
+my $basedir = undef;
+my $stopparsing = 0;
+my $serveraddress = undef;
+my $serverport = undef;
+my $hostname = undef;
+my @args = @ARGV;
+while (@args) {
+	my $arg = shift @args;
 
-		echo "`date "+%b %d %T"` -- [$HOST] Running $joblongname"
-		echo "`date` -- [$HOST] Running $joblongname" &> "$outfile"
-		echo "" &>> "$outfile"
+	if ($stopparsing) {
+		# A previous -- was supplied. So no more arguments should be parsed. The only valid options
+		# are maxjobs and the basedir. And they must be defined only once
+		die "Invalid argument '$arg'\n" if defined $maxjobs && defined $basedir;
+		$basedir = $arg if defined $maxjobs;
+		$maxjobs = $arg unless defined $maxjobs;
+		next;
+	}
 
-		jobtype=`echo -n $job | sed 's!^.*\.!!'`
-		if [[ "$jobtype" == "m" ]]; then
-			if [[ -f "./${jobshortname}.m" ]]; then
-				echo "`date "+%b %d %T"` -- [$HOST] WARNING: Possible classh name with file './${jobshortname}.m'"
-				echo "`date` -- [$HOST] WARNING: Possible classh name with file './${jobshortname}.m'" &>> "$outfile"
-				echo "`date` -- [$HOST] WARNING: File in current working dir may take precedence over '$jobfile'" &>> "$outfile"
-				echo "" &>> "$outfile"
-			fi
-			verbose "Running MATLAB with command line: "\
-"'matlab -singleCompThread -nodesktop -r \"addpath('$jobdirpath'); $jobshortname; quit;\" &>> \"$outfile\" & disown -h"
-			matlab -singleCompThread -nodesktop -r "addpath('$jobdirpath'); $jobshortname; quit;" &>> "$outfile" & disown -h
-			pid=$!
-			addjob $pid "$joblongname"
-		elif [[ "$jobtype" == "sh" ]]; then
-			verbose "Running bash script with command line: bash \"$jobfile\" &>> \"$outfile\" & disown -h"
-			bash "$jobfile" &>> "$outfile" & disown -h
-			pid=$!
-			addjob $pid "$joblongname"
-		else
-			echo "Invalid job type ($jobtype)"
-		fi
-	done
+	if ($arg eq "-r") {
+		my $next = shift @args;
+		die "Missing value for option -r\n" unless defined $next;
+		print "Overriding runs directory from '$runsubpath' with '$next'\n";
+		$runsubpath = $next;
+	}
+	elsif ($arg eq "-o") {
+		my $next = shift @args;
+		die "Missing value for option -o\n" unless defined $next;
+		print "Overriding output directory from '$outsubpath' with '$next'\n";
+		$outsubpath = $next;
+	}
+	elsif ($arg eq "-v") {
+		$verbose = 1;
+		verbose "Entered VERBOSE mode.";
+	}
+	elsif ($arg eq "-c") {
+		my $next = shift @args;
+		die "Missing value for option -c\n" unless defined $next;
+		die "Invalid connection info '$next'\n" unless $next =~ /^\d+(\.\d+){3}(:\d+)?$/;
+		$next =~ /^([^:]+)(:\d+)?$/;
+		$serveraddress = $1;
+		$serverport = $2 if defined $2;
+		$serverport =~ s/^:// if defined $serverport;
+	}
+	elsif ($arg eq "-h") {
+		my $next = shift @args;
+		die "Missing value for option -h\n" unless defined $next;
+		$hostname = $next;
+		print "Hostname changed to $hostname by command line argument\n";
+	}
+	elsif ($arg eq "--help") {
+		my $me = $0 || "runex";
+		$me =~ s!.*/!!;
+		print "$me: experiment runner
 
-	writerunninginfo
+This is the experiment runner for runexp. runexp is a system designed to launch
+experiments in several experiment servers using a distributed file system as
+communication medium.
 
-	# Remove the job files
-	rm "$runpath/$HOST.go"
-	rm "$runpath/$HOST.job"
-	verbose "Removed control files '$HOST.go' and '$HOST.job'"
-done
+Usage:
+	$me <MAXJOBS> [<BASEDIR>] [OPTIONS]
 
-updaterunningjobs
-if [[ $runningjobs > 0 ]]; then
-	echo "`date "+%b %d %T"` -- [$HOST] All spawned. Waiting..."
-	while [[ $runningjobs > 0 ]]; do
-		sleep $SLEEPTIME
-		updaterunningjobs
-	done
-fi
-echo "`date "+%b %d %T"` -- [$HOST] My work here is done."
+	<MAXJOBS>  Mandatory argument that specifies how many experiments should
+	           be simultaneously in execution at a time. This argument must
+		   be specified before <BASEDIR>, if <BASEDIR> is specified.
+	<BASEDIR>  Specify where runexp should look for the jobs and  outputs
+		   directory. If ommitted, the current working directory is
+		   used. This does not change the current working directory.
+	-r <RUNPATH>
+		   Specify the directory where jobs should be looked for. Each
+		   job either a .m or a .sh file. The default value for this
+		   option is <BASEDIR>/runs.
+	-o <OUTPUTPATH>
+		   Specify the directory where the job outputs will be written.
+		   When executed, the standard output and the standard error
+		   output will be redicted to a file in this directory. The
+		   default value for this option is <BASEDIR>/outputs.
+	-h <NAME>  Use <NAME> as hostname instead of system name.
+	-v         Print detailed information.
+	
+This is a 'works-for-me' kind of system. It works for me, right now, and that's
+currently enough. If it doesn't work for you, that could be because you're not
+me, or maybe you are me in a distant future and you don't remember why you even
+needed this in the first place.
+
+You're currently using an SSH filesystem to establish the distributed file
+system that runexp requires. Go to the experiment server, sshfs to your machine
+and symlink whatever you need. The experiment server should not know it's not
+your workstation.
+
+Once the experiment server is set up, launch the queue manager in your
+workstation, then launch the runners in each experiment server. It should go
+like this:
+
+	\$ queueexp -r runs -o logs
+	\$ ssh user\@experimentserver
+	[...]
+	\$ runexp 8
+
+This will run 8 simultaneous jobs in the experiment server.
+";
+		exit;
+	}
+	elsif ($arg eq "--") {
+		# Stop parsing arguments
+		$stopparsing = 1;
+	}
+	elsif ($arg !~ /^-/) {
+		# If something that does not start with a dash is supplied, we assume it is either the maximum number of
+		# simultaneous jobs or a base dir (the number of jobs comes first)
+		die "Invalid argument '$arg'\n" if defined $maxjobs && defined $basedir;
+		$basedir = $arg if defined $maxjobs;
+		$maxjobs = $arg unless defined $maxjobs;
+	}
+	else {
+		die "Invalid argument '$arg'\n";
+	}
+}
+my $path;
+if (defined $basedir) {
+	print "Overriding base directory from './' with '$basedir'\n";
+	$path = abs_path($basedir);
+}
+else {
+	$path = abs_path(getcwd());
+}
+$path =~ s{/$}{};
+my $runpath = "$path/$runsubpath";
+my $outpath = "$path/$outsubpath";
+$runpath =~ s{/$}{};
+$outpath =~ s{/$}{};
+
+die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
+die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
+
+die "Can't find runs directory at $runpath\n" unless -d $runpath;
+die "Can't find outputs directory at $outpath\n" unless -d $outpath;
+
+# Read configurations from file
+my %conf = readconfig();
+for my $key (keys %conf) {
+	if ($key eq "port" && !defined $serverport) {
+		$serverport = $conf{$key};
+		print "Using port $serverport as specified from config file\n";
+	}
+	elsif ($key eq "qmanager" && !defined $serveraddress) {
+		$serveraddress = $conf{$key};
+		print "Using server address $serveraddress as specified from config file\n";
+	}
+	elsif ($key eq "hostname" && !defined $hostname) {
+		$hostname = $conf{$key};
+		print "Using hostname $hostname as specified from config file\n";
+	}
+}
+
+($hostname = `hostname -s`, chomp $hostname) unless defined $hostname;
+die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0-9]+$/;
+
+# The commbusy flag is used to indicate that a thread is trying to communicate with the server. We
+# lock this variable because otherwise we would have to lock $masterstop and $serversocket
+my $commbusy :shared = 0;
+
+# If the shared variable masterstop is set to 1, then all workers will cease requesting new jobs
+my $masterstop :shared = 0;
+
+# Try to connect to and hail the server
+verbose "Connecting to server at $serveraddress:$serverport";
+my $serversocket = IO::Socket::INET->new(
+	PeerAddr => $serveraddress,
+	PeerPort => $serverport,
+	Proto    => 'tcp',
+) or die "Error connecting to server at $serveraddress:$serverport: $!\n";
+hail_server($serversocket);
+
+# Create workers and wait for them to finish
+my @workers;
+for my $i (1 .. $maxjobs) {
+	my $worker = threads->create(\&workerloop, $i, $serversocket);
+	push @workers, $worker;
+}
+print "No more new jobs to run. Waiting for current jobs to finish...\n";
+for my $worker (@workers) {
+	$worker->join();
+}
+
+# When we have finished, properly end communications
+bye_server($serversocket);
+$serversocket->close();
+print "Done!\n";
+
+
+
+###################
+
+
+
+sub workerloop {
+	my $id = shift;
+	my $serversocket = shift;
+
+	verbose "Worker $id started";
+
+	while (1) {
+		my $job = askforjob($id, $serversocket);
+		(verbose "Worker $id: finished" and return) unless defined $job;
+		verbose "Worker $id: got a new job -- $job";
+		runjob($job);
+	}
+}
+
+
+# Print information before running a job
+sub printrun {
+        my $jobname = shift;
+
+        my $time = `date "+%b %d %T"`;
+        chomp $time;
+
+        printf "$time [$hostname] Running $jobname\n";
+}
+
+
+# Print a fail log
+sub printfail {
+	my $failmessage = shift;
+        
+	my $time = `date "+%b %d %T"`;
+        chomp $time;
+
+        printf "$time [$hostname] ERROR: $failmessage\n";
+}
+
+
+sub runandlog {
+	my $longname = shift;
+	my $cmdline = shift;
+	my $output = shift;
+
+	printrun($longname);
+
+	verbose "Job info";
+	verbose "  name   : $longname";
+	verbose "  output : $output";
+	verbose "  cmdline: $cmdline";
+
+	my $starttime = `date`;
+	chomp $starttime;
+	verbose "Running job $longname";
+	my $progoutput = `$cmdline`;
+	my $progstatus = $?;
+	verbose "Finished job $longname";
+	my $endtime = `date`;
+	chomp $endtime;
+
+	open OUTPUT, ">$output" or die "Error opening $output";
+	print OUTPUT "$starttime -- [$hostname] Running $longname\n";
+	print OUTPUT "> $cmdline\n";
+	print OUTPUT "$endtime -- Finished running\n";
+	print OUTPUT "Program exited with status $progstatus\n";
+	print OUTPUT "Program output follows\n";
+	print OUTPUT "\n";
+	print OUTPUT $progoutput;
+	close OUTPUT;
+}
+
+# Run a MATLAB job
+sub runmatlab {
+	my $longname = shift;
+	my $shortname = shift;
+	my $jobdir = shift;
+	my $output = shift;
+
+	if (-f "$shortname.m") {
+		printfail "A script named '$shortname.m' in the current working dir causes conflict";
+		return;
+	}
+
+	print "<<";
+	my $matlabcmd ="try; $shortname; catch e, fprintf('Failed: %s\\n', e.message); end";
+	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"addpath('$jobdir'); $matlabcmd; quit;\"";
+	print ">>\n";
+	runandlog($longname, $cmdline, $output);
+}
+
+
+# Run a bash job
+sub runbash {
+	my $longname = shift;
+	my $job = shift;
+	my $output = shift;
+
+	my $cmdline = "bash '$job'";
+	runandlog($longname, $cmdline, $output);
+}
+
+
+# Run a new job
+sub runjob {
+	my $job = shift;
+
+	# Separate /path/runs/subpath/job.ext into long name (subpath/job) and shortname (job)
+	$job =~ m{^$runpath/(.+)} or die "Can't match job '$job' against m{^$runpath/(.+)}";
+	my $longname = $1;
+	$longname =~ s{\.[^.]+$}{};
+	my $shortname = $longname;
+	$shortname =~ s{(.*/)?([^/]+)}{$2};
+
+	# Compose the output file path
+	my $output = "$outpath/$longname.res";
+
+	# Get the job directory (full path)
+	my $jobdir = $job;
+	$jobdir =~ s{(.*/)[^/]+}{$1};
+
+	# If the job has an extension, use it as job type
+	my $type = $job =~ /\.[^.]+/ ? $& : '';
+
+	# Write the output file preamble
+
+
+	if ($type eq ".m") {
+		runmatlab($longname, $shortname, $jobdir, $output);
+	}
+	elsif ($type eq ".sh") {
+		runbash($longname, $job, $output);
+	}
+	else {
+		printfail("Invalid job type '$type'");
+	}
+}
+
+
+# Ask server for job
+sub askforjob {
+	my $id = shift;
+	my $serversocket = shift;
+	my $reqsize = 1;
+	my $msg;
+
+	# Lock the communication flag
+	verbose "Worker $id: trying to get lock of communications";
+	lock($commbusy);
+	verbose "Worker $id: I have the lock";
+
+	# If another worker received a FINO message, then there are no more jobs
+	(verbose "Worker $id: MASTERSTOP raised" and return undef) if $masterstop;
+
+	verbose "Worker $id: sending server the message 'PETO'";
+	$serversocket->send('PETO');
+
+	verbose "Worker $id: waiting for job from the server";
+	$serversocket->recv($msg, 1024);
+	verbose "Worker $id: received message '$msg'";
+
+	if ($msg eq "FINO") {
+		verbose "Worker $id: raising MASTERSTOP";
+		$masterstop = 1;
+		return undef;
+	}
+	return "$runpath/$msg";
+}
+
+
+# Handshake server: this is executed before workers are created, so there is no
+# need to lock anything
+sub hail_server {
+	my $serversocket = shift;
+
+	verbose "Sending server the 'SALUTON' hail";
+	$serversocket->send("SALUTON; MI $hostname");
+
+	verbose "Waiting for protocol version";
+	my $msg;
+	$serversocket->recv($msg, 1024);
+	verbose "Received version string '$msg'";
+	die "Bad protocol version: $msg\n" unless $msg =~ /^VERSIO \d+(.\d+)?$/;
+	$msg =~ s/^VERSIO //;
+	die "Bad protocol version: $msg\n" unless $msg == 1.0;
+
+	verbose "Version accepted. Sending server acknowledgement message";
+	$serversocket->send("KOMPRENAS");
+}
+
+
+# Finish conversation with server
+sub bye_server {
+	my $serversocket = shift;
+
+	verbose "Sending server the 'KOMPRENAS' message";
+	$serversocket->send("KOMPRENAS");
+}

@@ -4,22 +4,32 @@ use strict;
 
 use Cwd qw(getcwd abs_path);
 use File::Path qw(make_path);
+use IO::Socket::INET;
+use IO::Select;
+use threads;
+use threads::shared;
+use Thread::Queue;
+use rxplib qw(readconfig);
+
+$| = 1;
+
+# Communication protocol version
+my $PROTOCOL_VERSION = 1.0;
 
 # Print detailed information if running verbosely
 my $verbose = 0;
 sub verbose {
-	return unless $verbose;
+	return 1 unless $verbose;
 
 	my $msg = shift;
 	
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time -- [ INFO ] $msg\n";
-}
+	printf "$time [ INFO ] $msg\n";
 
-# No stdout buffering
-#$| = 1;
+	return 1;
+}
 
 # Check arguments and set default paths
 my $runsubpath = 'runs';		# default jobs directory
@@ -28,6 +38,7 @@ my $printjobs = 0;
 my $randomize = 0;			# randomize jobs
 my $basedir = undef;
 my $stopparsing = 0;
+my $port = undef;
 my @args = @ARGV;
 while (@args) {
 	my $arg = shift @args;
@@ -62,6 +73,12 @@ while (@args) {
 	elsif ($arg eq "--random") {
 		$randomize = 1;
 	}
+	elsif ($arg eq "-p") {
+		my $next = shift @args;
+		die "Missing value for option -p\n" unless defined $next;
+		$port = $next;
+		die "Invalid port number: $port\n" unless $port =~ /^[0-9]+$/;
+	}
 	elsif ($arg eq "--help") {
 		my $me = $0 || "queueexp";
 		$me =~ s!.*/!!;
@@ -90,6 +107,7 @@ Usage:
 	--print-jobs
 		   Print remaining jobs and quit.
 	-v         Print detailed information.
+	-p <PORT>  Listen on port <PORT>
 	
 This is a 'works-for-me' kind of system. It works for me, right now, and that's
 currently enough. If it doesn't work for you, that could be because you're not
@@ -139,9 +157,139 @@ else {
 $path =~ s{/$}{};
 my $runpath = "$path/$runsubpath";
 my $outpath = "$path/$outsubpath";
+$runpath =~ s{/$}{};
+$outpath =~ s{/$}{};
 my $donetest = "$outpath/runtest.exp";   # optional external program to check if an experiment was run
 
 die "Run test program exists, but is not executable.\n" if -f $donetest && ! -x $donetest;
+die "Runs directory not found in $runpath\n" unless -d $runpath;
+
+# Check if the configuration file has options that we need checking
+my %conf = readconfig();
+for my $key (keys %conf) {
+	if ($key eq "port" && !defined $port) {
+		$port = $conf{port};
+		print "Using port $port as specified from config file\n";
+	}
+}
+
+die "No port to listen to specified\n" unless defined $port;
+
+# Search for jobs in the runpath and its sub directories, checks if all required directories
+# exist in the ouput path as well
+my @tree = gettree($runpath, 'm|sh');
+my @jobs = ();
+for my $subdir (@tree) {
+	# Remove the run path from the directory name, search for the required directory in
+	# the outputs dir
+	my $outputdir = $subdir;
+	$outputdir =~ s{^$runpath}{$outpath};
+	if (! -d $outputdir) {
+		my $errors;
+		make_path($outputdir, {verbose => 0, error => \$errors});
+		if (@$errors) {
+			die "Attempt to create directory and parent directories $outputdir failed:\n" .
+				join("\n", @$errors) . "\n";
+		}
+		print "Created output directory (and possibly parent directories) $outputdir\n";
+	}
+	push @jobs, getfiles($subdir, 'm|sh');
+}
+die "There are no jobs here.\n" unless scalar(@jobs);
+
+my $totaljobs :shared = scalar(@jobs);
+my $ranjobs :shared = 0;
+print "There are $totaljobs jobs here.\n";
+
+@jobs = grep(!donejob($_), @jobs);
+$ranjobs = $totaljobs - @jobs;
+if (!@jobs) {
+	print "I have already run everything. Nothing else to do here.\n";
+	exit;
+}
+elsif ($ranjobs) {
+	printf "I have already run $ranjobs job%s. I will skip them.\n", ($ranjobs > 1 ? "s" : "");
+	printf "I now have " . (scalar @jobs) . " job%s to run.\n", (@jobs > 1 ? "s" : "");
+}
+else {
+	print "I did not do anything yet.\n";
+}
+
+# Job list may or may not be sorted. Do not assume anything. Unless option --randomize is supplied,
+# then the list should be sorted.
+if ($randomize) {
+	randomizejobs(\@jobs) if $randomize;
+}
+else {
+	@jobs = sort { $a cmp $b } @jobs;
+}
+
+if ($printjobs) {
+	print join("\n", @jobs) . "\n";
+	exit 0;
+}
+
+verbose "Opening server at port $port";
+my $serversocket = IO::Socket::INET->new(
+	LocalHost => '0.0.0.0',
+	LocalPort => $port,
+	Proto     => 'tcp',
+	Listen    => 5,
+	ReuseAddr => 1,
+) or die "Error opening server on port $port: $!\n";
+my $select = IO::Select->new($serversocket);
+
+my $jobqueue = makejobqueue(\@jobs);
+my $runningthreads :shared = 0;
+my @sockets;
+while ($jobqueue->pending()) {
+	my @ready = $select->can_read(1);
+	if (scalar (@ready)) {
+		my $client = $serversocket->accept();
+		my $remoteaddr = $client->peerhost();
+		my $remoteport = $client->peerport();
+		my $clientid = scalar @sockets;
+		verbose "Accepted client #$clientid from $remoteaddr:$remoteport";
+
+		{
+			lock($runningthreads);
+			$runningthreads++;
+			verbose "Running threads: $runningthreads";
+		}
+		threads->create(\&clientloop, $client, $clientid)->detach();
+		push @sockets, $client;
+	}
+}
+print "All jobs were spawned.\n";
+print "Waiting for clients to disconnect.\n";
+while ($runningthreads) {
+	verbose "Running threads: $runningthreads";
+	sleep 1;
+}
+print "Done!\n";
+
+for my $socket (@sockets) {
+	$socket->close();
+}
+$serversocket->close();
+
+
+################
+
+
+# Return the job list in a thread-safe job queue
+sub makejobqueue {
+	my $jobs = shift;
+	my $queue = Thread::Queue->new;
+
+	for my $job (@$jobs) {
+		$queue->enqueue($job);
+	}
+	$queue->end();
+
+	return $queue;
+}
+
 
 # Get all files with extension specified by $ext in the specified directory. $ext is a pipe-separated list
 sub getfiles {
@@ -188,21 +336,29 @@ sub printfail {
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time -- [ERROR] $host: request file is empty. Client is stuck\n";
+	printf "$time [ERROR] $host: request file is empty. Client is stuck\n";
 }	
 
 
 # Print information before running a job
 sub printrun {
-	my $ranpct = shift;
-	my $jobname = shift;
+	my $job = shift;
 	my $host = shift;
 
+	my $jobname = $job;
+	$jobname =~ s{^$runpath/}{};
+	$jobname =~ s{\.[^.]+$}{};
+	
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time -- [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
+	lock($ranjobs);
+	$ranjobs++;
+	my $ranpct = $ranjobs / $totaljobs;
+
+	printf "$time [%5.1f%%] $host: $jobname\n", 100 * $ranpct;
 }
+
 
 # Check if a job has already been executed. A job has been executed if its output file contains the string RES: or if
 # a verification application returns 1
@@ -211,7 +367,7 @@ sub donejob {
 	verbose "Checking if job '$jobfile' is done";
 
 	my $resfile = $jobfile;
-	$resfile =~ s{^$runpath/}{$outpath/};
+	$resfile =~ s{^$runpath}{$outpath};
 	$resfile =~ s{\.[^.]*$}{.res};
 	verbose "Searching output file '$resfile'";
 	
@@ -255,133 +411,117 @@ sub randomizejobs {
 	}
 }
 
-die "Runs directory not found in $runpath\n" unless -d $runpath;
 
-# Search for jobs in the runpath and its sub directories, checks if all required directories
-# exist in the ouput path as well
-my @tree = gettree($runpath, 'm|sh');
-my @jobs = ();
-for my $subdir (@tree) {
-	# Remove the run path from the directory name, search for the required directory in
-	# the outputs dir
-	my $outputdir = $subdir;
-	$outputdir =~ s{^$runpath/?}{$outpath/};
-	if (! -d $outputdir) {
-		my $errors;
-		make_path($outputdir, {verbose => 0, error => \$errors});
-		if (@$errors) {
-			die "Attempt to create directory and parent directories $outputdir failed:\n" .
-				join("\n", @$errors) . "\n";
-		}
-		print "Created output directory (and possibly parent directories) $outputdir\n";
+# Receive the SALUTON message from the client and get client's name
+sub client_hail {
+	my $socket = shift;
+	my $id = shift;
+	my $msg;
+
+	# Wait for cleint to send the HELLO message
+	verbose "Client $id: waiting 'SALUTON'";
+	$socket->recv($msg, 1024);
+	verbose "Client $id: received message '$msg'";
+	return undef unless $msg =~ /^SALUTON; MI ([-_a-zA-Z0-9]+)$/;
+	my $name = $1;
+	verbose "Client $id: now known as $name";
+
+	# Send protocol version to client
+	verbose "Client $name: sending 'VERSIO'";
+	$socket->send(sprintf("VERSIO %.1f", $PROTOCOL_VERSION));	
+
+	# Wait for client to acknowledge
+	verbose "Client $name: waiting 'KOMPRENAS'";
+	$socket->recv($msg, 1024);
+	return undef unless $msg eq "KOMPRENAS";
+
+	return $name;
+}
+
+
+# Wait for a client to send a request for jobs
+sub client_readjobrequest {
+	my $socket = shift;
+	my $name = shift;
+	my $msg;
+
+	verbose "Client $name: waiting for job request";
+	$socket->recv($msg, 1024);
+
+	verbose "Cliend $name: received message '$msg'";
+	return $msg eq "PETO";
+}
+
+
+
+# Send a job to the client
+sub client_sendjob {
+	my $socket = shift;
+	my $name = shift;
+	my $job = shift;
+
+	my $jobname = $job;
+	$jobname =~ s{^$runpath/}{};
+
+	verbose "Client $name: sending job";
+	$socket->send($jobname);
+}
+
+
+# Send FINO message to client and receives their acknowledgement
+sub client_bye {
+	my $socket = shift;
+	my $name = shift;
+
+	verbose "Client $name: no more jobs to run";
+	verbose "Client $name: sending FINO message";
+	$socket->send('FINO');
+
+	verbose "Client $name: waiting for acknowledgment";
+	my $msg;
+	$socket->recv($msg, 1024);
+	verbose "Client $name: received '$msg'";
+	return $msg eq "KOMPRENAS";
+}
+
+
+# Should be called before a thread is finished
+sub endthread {
+	lock($runningthreads);
+	$runningthreads--;
+	return 1;
+}
+
+
+sub clientloop {
+	my $socket = shift;
+	my $id = shift;
+	my $name = shift;
+
+	my $name = client_hail($socket, $id);
+	(endthread and return) unless defined $name;
+
+	while (1) {
+		(endthread and return) unless client_readjobrequest($socket, $name);
+		
+		verbose "Client $name: requested a job";
+		my $nextjob = getnextjob();
+		last unless defined $nextjob;
+
+		client_sendjob($socket, $name, $nextjob);
+		printrun($nextjob, $name);
 	}
-	push @jobs, getfiles($subdir, 'm|sh');
-}
-die "There are no jobs here.\n" unless scalar(@jobs);
 
-my $totaljobs = @jobs;
-my $ranjobs = 0;
-print "There are $totaljobs jobs here.\n";
-
-@jobs = grep(!donejob($_), @jobs);
-my $ranjobs = $totaljobs - @jobs;
-if (!@jobs) {
-	print "I have already run everything. Nothing else to do here.\n";
-	exit;
-}
-elsif ($ranjobs) {
-	printf "I have already run $ranjobs job%s. I will skip them.\n", ($ranjobs > 1 ? "s" : "");
-	printf "I now have " . (scalar @jobs) . " job%s to run.\n", (@jobs > 1 ? "s" : "");
-}
-else {
-	print "I did not do anything yet.\n";
+	client_bye($socket, $name);
+	endthread;
 }
 
-# Job list may or may not be sorted. Do not assume anything. Unless option --randomize is supplied,
-# then the list should be sorted.
-if ($randomize) {
-	randomizejobs(\@jobs) if $randomize;
-}
-else {
-	@jobs = sort { $a cmp $b } @jobs;
-}
 
-if ($printjobs) {
-	print join("\n", @jobs) . "\n";
-	exit 0;
-}
-
-unlink "$_" for getfiles($runpath, "go|req|ready|job|stop");
-
-while (1) {
-	last unless @jobs;
-
-	my @readyflags = getfiles($runpath, "ready");
-	while (!@readyflags) {
-		sleep 1;
-		@readyflags = getfiles($runpath, "ready");
+# Return the next undone job
+sub getnextjob {
+	while ($jobqueue->pending()) {
+		my $candidate = $jobqueue->dequeue();
+		return $candidate unless donejob($candidate);
 	}
-
-	for my $readyflag (@readyflags) {
-		my $host = $readyflag;
-		$host =~ s!^.*/(.*)\.ready!$1!;
-		verbose "Host '$host' is ready";
-
-		my $reqfile = $readyflag;
-		$reqfile =~ s/\.ready/.req/;
-
-		open REQFILE, "<$reqfile";
-		my $reqsize = <REQFILE>;
-		chomp $reqsize;
-		close REQFILE;
-
-		unlink $readyflag;
-		unlink $reqfile;
-		if ($reqsize !~ /^\d+$/) {
-			printfail($host);
-			next;
-		}
-		verbose "Host '$host' is available to run $reqsize job(s)";
-
-		my @req;
-		while ($reqsize) {
-			last unless @jobs;
-
-			my $nextjob = shift @jobs;
-			verbose "Selected job '$nextjob' to host '$host'";
-			my $jobname = $nextjob;
-			$jobname =~ s{^.*/(.*)\..*$}{$1};
-			my $jobfile = $nextjob;
-			$jobfile =~ s{^$runpath/}{};
-
-			if (donejob($nextjob)) {
-				$ranjobs++;
-				printrun($ranjobs / $totaljobs, $jobname, "SKIPPING");
-			}
-			else {
-				$ranjobs++;
-				printrun($ranjobs / $totaljobs, $jobname, $host);
-				$reqsize--;
-				push @req, $jobfile;
-			}
-		}
-
-		if (@req) {
-			verbose "Writing job list '$host.job'";
-			open SERVFILE, ">$runpath/$host.job";
-			print SERVFILE join("\n", @req);
-			close SERVFILE;
-
-			verbose "Writing go file '$host.go'";
-			open GOFILE, ">$runpath/$host.go";
-			close GOFILE;
-		}
-		else {
-			verbose "Request from host '$host' abandoned: no more jobs to run";
-		}
-	}
+	return undef;
 }
-print "All jobs were spawned. Over and out.\n";
-
-open STOPFILE, ">$runpath/master.stop";
-close STOPFILE;
