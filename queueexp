@@ -459,10 +459,10 @@ sub client_sendjob {
 	my $job = shift;
 
 	my $jobname = $job;
-	$jobname =~ s/^$runpath//;
+	$jobname =~ s{^$runpath/}{};
 
 	verbose "Client $name: sending job";
-	$socket->send($job);
+	$socket->send($jobname);
 }
 
 

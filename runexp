@@ -390,7 +390,7 @@ sub askforjob {
 		$masterstop = 1;
 		return undef;
 	}
-	return $msg;
+	return "$runpath/$msg";
 }
 
 
