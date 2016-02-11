@@ -10,6 +10,7 @@ use threads;
 use threads::shared;
 use Thread::Queue;
 use rxplib::config qw(readconfig);
+use Getopt::Long qw(:config no_ignore_case bundling auto_help);
 
 $| = 1;
 
@@ -32,121 +33,28 @@ sub verbose {
 }
 
 # Check arguments and set default paths
-my $runsubpath = 'runs';		# default jobs directory
-my $outsubpath = 'outputs';		# default outputs directory
+my $runsubpath = 'runs';
+my $outsubpath = 'outputs';
 my $printjobs = 0;
-my $randomize = 0;			# randomize jobs
+my $randomize = 0;
 my $basedir = undef;
 my $stopparsing = 0;
 my $port = undef;
-my @args = @ARGV;
-while (@args) {
-	my $arg = shift @args;
 
-	if ($stopparsing) {
-		# A previous -- was supplied. So no more arguments should be parsed. The only valid option
-		# is the basedir. And it must be defined only once.
-		die "Invalid argument '$arg'\n" if defined $basedir;
-		$basedir = $arg;
-		next;
-	}
-	
-	if ($arg eq "-r") {
-		my $next = shift @args;
-		die "Missing value for option -r\n" unless defined $next;
-		print "Overriding runs directory from '$runsubpath' with '$next'\n";
-		$runsubpath = $next;
-	}
-	elsif ($arg eq "-o") {
-		my $next = shift @args;
-		die "Missing value for option -o\n" unless defined $next;
-		print "Overriding output directory from '$outsubpath' with '$next'\n";
-		$outsubpath = $next;
-	}
-	elsif ($arg eq "-v") {
-		$verbose = 1;
-		verbose "Entered VERBOSE mode.";
-	}
-	elsif ($arg eq "--print-jobs") {
-		$printjobs = 1;
-	}
-	elsif ($arg eq "--random") {
-		$randomize = 1;
-	}
-	elsif ($arg eq "-p") {
-		my $next = shift @args;
-		die "Missing value for option -p\n" unless defined $next;
-		$port = $next;
-		die "Invalid port number: $port\n" unless $port =~ /^[0-9]+$/;
-	}
-	elsif ($arg eq "--help") {
-		my $me = $0 || "queueexp";
-		$me =~ s!.*/!!;
-		print "$me: queue experiments for distributed execution
+GetOptions(
+	'runs|r=s'	=> \$runsubpath,
+	'outputs|o=s'	=> \$outsubpath,
+	'print-jobs'	=> \$printjobs,
+	'random'	=> \$randomize,
+	'port|p=n'	=> \$port,
+	'verbose|v'	=> \$verbose,
+) or die "Executiong terminated.\n";
 
-This is the queue management for runexp. runexp is a system designed to launch
-experiments in several experiment servers using a distributed file system as
-communication medium.
+# Only one bare argument is accepted: the base dir
+$basedir = shift @ARGV;
+die "Extra arguments: " . join(' ', @ARGV) . "\n" if @ARGV;
 
-Usage:
-	$me [<BASEDIR>] [OPTIONS]
 
-	<BASEDIR>  Specify where runexp should look for the jobs and  outputs
-		   directory. If ommitted, the current working directory is
-		   used. This does not change the current working directory.
-	-r <RUNPATH>
-		   Specify the directory where jobs should be looked for. Each
-		   job either a .m or a .sh file. The default value for this
-		   option is <BASEDIR>/runs
-	-o <OUTPUTPATH>
-		   Specify the directory where the job outputs will be written.
-		   When executed, the standard output and the standard error
-		   output will be redicted to a file in this directory. The
-		   default value for this option is <BASEDIR>/outputs
-	--random   Run jobs in random order instead of lexicographical order.
-	--print-jobs
-		   Print remaining jobs and quit.
-	-v         Print detailed information.
-	-p <PORT>  Listen on port <PORT>
-	
-This is a 'works-for-me' kind of system. It works for me, right now, and that's
-currently enough. If it doesn't work for you, that could be because you're not
-me, or maybe you are me in a distant future and you don't remember why you even
-needed this in the first place.
-
-You're currently using an SSH filesystem to establish the distributed file
-system that runexp requires. Go to the experiment server, sshfs to your machine
-and symlink whatever you need. The experiment server should not know it's not
-your workstation.
-
-Once the experiment server is set up, launch the queue manager in your
-workstation, then launch the runners in each experiment server. It should go
-like this:
-
-	\$ queueexp -r runs -o logs
-	\$ ssh user\@experimentserver
-	[...]
-	\$ runexp 8 runs logs
-
-This will run 8 simultaneous jobs in the experiment server.
-";
-		exit;
-	}
-	elsif ($arg eq "--") {
-		# Stop parsing arguments
-		$stopparsing = 1;
-	}
-	elsif ($arg !~ /^-/) {
-		# If something that does not start with a dash is supplied, we assume it is the base
-		# directory. Unless it has already been supplied.
-		die "Invalid argument '$arg'\n" if defined $basedir;
-		$basedir = $arg;
-		print "Overriding base directory from './' with '$basedir'\n";
-	}
-	else {
-		die "Invalid argument '$arg'\n";
-	}
-}
 my $path;
 if (defined $basedir) {
 	$path = abs_path($basedir);
@@ -525,3 +433,39 @@ sub getnextjob {
 	}
 	return undef;
 }
+
+__END__
+=head1 NAME
+
+queueexp - queue experiments for distributed execution
+
+=head1 SYNOPSIS
+
+queueexp [<BASEDIR>] [OPTIONS]
+
+This is the queue management for runexp. runexp is a system designed to launch
+experiments in several experiment servers using a distributed file system as
+communication medium.
+
+Options:
+	
+	<BASEDIR>  Specify where runexp should look for the jobs and  outputs
+		   directory. If ommitted, the current working directory is
+		   used. This does not change the current working directory.
+	-r,--run <RUNPATH>
+		   Specify the directory where jobs should be looked for. Each
+		   job either a .m or a .sh file. The default value for this
+		   option is <BASEDIR>/runs
+	-o,--output <OUTPUTPATH>
+		   Specify the directory where the job outputs will be written.
+		   When executed, the standard output and the standard error
+		   output will be redicted to a file in this directory. The
+		   default value for this option is <BASEDIR>/outputs
+	--random   Run jobs in random order instead of lexicographical order.
+	--print-jobs
+		   Print remaining jobs and quit.
+	-v         Print detailed information.
+	-p <PORT>  Listen on port <PORT>
+	
+runexp is hosted at GitHub. For source code and more information on how to use
+runexp, please visit github.com/rfgiusti/runexp
