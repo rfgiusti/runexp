@@ -432,6 +432,23 @@ sub client_sendjobs {
 }
 
 
+# Send FINO message to client and receives their acknowledgement
+sub client_bye {
+	my $socket = shift;
+	my $id = shift;
+
+	verbose "Client $id: no more jobs to run";
+	verbose "Client $id: sending FINO message";
+	$socket->send('FINO');
+
+	verbose "Client $id: waiting for acknowledgment";
+	my $msg;
+	$socket->recv($msg, 1024);
+	verbose "Client $id: received '$msg'";
+	return $msg eq "KOMPRENAS";
+}
+
+
 # Should be called before a thread is finished
 sub endthread {
 	lock($runningthreads);
@@ -462,7 +479,6 @@ sub clientloop {
 		client_sendjobs($socket, $id, @jobstorun);
 	}
 
-	verbose "Client $id: no more jobs to run";
-
+	client_bye($socket, $id);
 	endthread;
 }
