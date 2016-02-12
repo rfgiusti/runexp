@@ -2,18 +2,21 @@ Communication between manager and runners via sockets
 -----------------------------------------------------
 
 
-This drafts the communication protocol version 1.0
+This drafts the communication protocol version 1.1
 
 
-STAGE
+SERVER-SIDE
+-----------
 
-1) Initialization
-2) Communication
+Server states:
 
+1) Accept
+2) Wait
+3) SendJob
+4) ProcessJob
+5) WaitClose
 
-STAGE 1
-
-Server-side
+State 1: Accept
 
 	1. Wait for a connection
 	2. When a client connects, wait for the hail "SALUTON; MI <HOSTNAME>".
@@ -21,41 +24,81 @@ Server-side
 	3. If a different message is received, terminate the connection
 	4. Write "VERSIO <PROTOCOL VERSION>" on the client socket
 	5. Wait for client acknowledge with the message "KOMPRENAS"
-	6. Start processing this client on STAGE 2, continue expecting other
-	   clients on STAGE 1
+	6. Start processing this client on state 2, continue expecting other
+	   clients on state 1
 
-Client-side
+Stete 2: Wait
+
+	1. Wait for client to send message
+	2. If the received message is in the form "PETO", then it is a request
+	   for job, go to sate 3; if the message is in the form "REZULTO", then
+	   it is informing of a job that has been finished, go to state 4
+
+State 3: SendJob
+
+	1. If there are no more jobs to run, go to state 5
+	2. Take the next job from the list, write on the client's socket in the
+	   form "<JOBNAME>"
+	3. Go to state 2
+
+State 4: ProcessJob
+
+	1. Server enters this state after receiving the message
+	   "REZULTO <JOBNAME> <STATUS>"; if the job <JOBNAME> has been
+	   spawned by the queue manager, got to step 2. Otherwise, drop the
+	   client with an error message
+	2. Take note that the job <JOBNAME> was finished with status <STATUS>
+	3. Go to state 2
+
+State 5: WaitClose
+
+	1. Write the message "FINO" on the client's socket indicating that
+	   there are no more jobs to run
+	2. Wait for client to reply with "KOMPRENAS"
+	3. Drop the connection
+
+
+
+CLIENT-SIDE
+-----------
+
+Workers run independently in threads; state 1 describes the main thread. Other
+states apply to individual workers
+
+States:
+
+1) Initialization
+2) WorkerLoop
+3) WaitClose
+
+State 1: Initialization
 
 	1. Connect to the server
 	2. Send the hail "SALUTON; MI <HOSTNAME>"
 	3. Waits for protocol version
 	4. If server send the message "VERSIO <PROTOCOL VERSION>" and the version
-	   number is acceptable, move to step 5. Otherwise, kill the connection
+	   number is acceptable, go to state 5. Otherwise, kill the connection
 	   and terminate the execution
 	5. Send the message "KOMPRENAS"
-	6. Move to STAGE 2
+	6. Start all workers on state 2
 
+State 2: WorkerLoop
 
-STAGE 2
+	1. Check if the flag MASTERSTOP is raised; if so, go to state 4
+	2. Stop all other workers from communicating with the server
+	3. Send a request to the server in the form "PETO"
+	4. Wait for the server to reply. When the reply is received, reallow
+	   other workers to communicate
+	5. If the message was "FINO", go to state 2
+	6. Otherwise, assume the message was a job name. Run the job
+	7. When the job finishes executing send the message 
+	   "REZULTO <JOBNAME> <STATUS>", signaling the manager of the job
+	   outcome (<STATUS> is "success" or "failure")
+	8. Go to step 1
 
-Server-side
+State 3: WaitClose
 
-	1. Wait for client to send message "PETO" requesting a job
-	2. If the server has no more jobs to run, go to step 4. Otherwise,
-	   continue the flow to step 3
-	3. Write the name of the next job into the client socket and go back to
-	   step 1
-	4. Send the message "FINO". Wait for client to reply
-	5. When client replies "KOMPRENAS", kill the connection
-
-Client-side
-
-Workers run independently. Each worker does their own communication with the
-server. 
-
-	1. If the flag MASTERSTOP is raised, go to step 5
-	2. Send a request to the server "PETO"
-	3. If the server send a job, run the job, then go back to 1
-	4. If the server sent the message "FINO", go to step 5
-	5. If this is the last worker, send to the server the message
-	   "KOMPRENAS" in response to its "PETO". Close the connection
+	1. If this is the last worker to reach the WaitClose state, send the
+	   server the message "KOMPRENAS" in response to its "PETO". Close
+	   the connection and terminate the worker. Otherwise, just 
+	   terminate the worker
