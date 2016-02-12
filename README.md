@@ -4,7 +4,7 @@ runexp is a simple loader for executable scripts. It is capable of starting proc
 a simple sockets-based protocol.
 
 The simplicity of runexp means it can be executed on a network without need of root access. There is not need
-to install anything on the remote machines, provided that a distributed filesystem is available.
+to install anything on the remote machines.
 
 This is not a load balancement manager. Each experiment server must be started with the number of experiments
 it will run in parallel, adn each experiment server must have their own copies of any files the experiments will
@@ -41,8 +41,7 @@ future).
 We save our job as a `.m` file in `/home/me/myexperiment/runs/job5.m`. That is all we need. Now to run that job:
 
 
-Step 1: starting the manager
-----------------------------
+### Step 1: starting the manager
 
 1. Make sure the servers have the required files. In this case, the servers should have, somewhere, all the files
    of our program that is in `/home/me/myexperiment`.
@@ -51,8 +50,7 @@ Step 1: starting the manager
 
 
 
-Step 2: Starting the runner
----------------------------
+### Step 2: Starting the runner
 
 1. Log into the experiment server
 1. Go to the directory where the program we want to run is installed (it *could* be `/home/me/myexperiment`, but
@@ -62,8 +60,7 @@ Step 2: Starting the runner
 
 
 
-Step 3: Check results
----------------------
+### Step 3: Check results
 
 1. The manager will start sending jobs to the experiment runners and taking their output. For each job, an
    output file will be saved in the outputs dir (e.g., `/home/me/myexperiment/outputs/job5.res`)
