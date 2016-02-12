@@ -34,9 +34,8 @@ fprintf('Accuracy with parameter value ''5'' was %0.4f\n', acc);
 fprintf('RES:done\n');
 ```
 
-This is one job. We put this in a `runs`. It will run our experimen with parameter value `5` and report the outcome.
-The last line prints a tag so that runexp knows the experiment was succesfully executed (this will change in the
-future).
+This is one job. It will run our experimen with parameter value `5` and report the outcome. The last line prints
+a tag so that runexp knows the experiment was succesfully executed (this will change in the future).
 
 We save our job as a `.m` file in `/home/me/myexperiment/runs/job5.m`. That is all we need. Now to run that job:
 
