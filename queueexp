@@ -299,11 +299,27 @@ sub client_sendjob {
 	my $name = shift;
 	my $job = shift;
 
-	my $jobname = $job;
-	$jobname =~ s{^$runpath/}{};
+	my $jobname = getjobname($job, $runpath);
 
-	verbose "Client $name: sending job";
-	$socket->send($jobname);
+	$job =~ /\.[^.]+$/ or die "Error matching job '$job' with extension";
+	my $jobtype = $&;
+
+	open FILE, "<$job";
+	my @jobcontents = <FILE>;
+	close @jobcontents;
+	my $jobcontents = join("", @jobcontents);
+	my $jobsize = length $jobcontents;
+
+	my $msg = "LABORO $jobname $jobtype $jobsize";
+	verbose "Client $name: sending job (message '$msg')";
+	$socket->send($msg);
+
+	verbose "Client $name: waiting for client to be ready";
+	$socket->recv($msg, 1024);
+	die "Unexpected message from client $name: '$msg'" unless $msg eq "PRETA";
+
+	verbose "Client $name: sending job ($jobsize bytes)";
+	$socket->send($jobcontents);
 	
 	lock $ranjobs;
 	$ranjobs++;
@@ -339,11 +355,7 @@ sub client_processresult {
 	verbose "Client $name: waiting for program output ($size bytes)";
 	$socket->recv($msg, $size + 512);
 
-	my $longname = getjobname($job, $runpath);
-
-	print "\n\n\njob=$job\nlongname=$longname\n";
-
-	my $outputfile = "$outpath/$longname.res";
+	my $outputfile = "$outpath/$job.res";
 	open FILE, ">$outputfile" or die "Error writing file $outputfile\n";
 	print FILE $msg;
 	close FILE;

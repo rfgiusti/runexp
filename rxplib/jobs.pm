@@ -75,29 +75,32 @@ sub _hasdonestring {
 # Run a new job
 sub runjob {
 	my $host = shift;
-	my $runpath = shift;
 	my $job = shift;
+	my $jobtype = shift;
+	my $jobdata = shift;
 
-	my ($shortname, $longname) = getjobname($job, $runpath);
-
-	# Get the job directory (full path)
-	my $jobdir = $job;
-	$jobdir =~ s{(.*/)[^/]+}{$1};
+	# Write the job data into a temporary file
+	my $jobfile = `mktemp runexp_XXXXXXXXXX$jobtype`;
+	chomp $jobfile;
+	open FILE, ">$jobfile";
+	print FILE $jobdata;
+	close FILE;
 
 	# Run the job according to its type (based on the extension)
 	my ($outcome, $output);
-	my $type = $job =~ /\.[^.]+/ ? $& : '';
-	if ($type eq ".m") {
-		($outcome, $output) = runmatlab($host, $longname, $shortname, $jobdir);
+	if ($jobtype eq ".m") {
+		($outcome, $output) = runmatlab($host, $job, $jobfile);
 	}
-	elsif ($type eq ".sh") {
-		($outcome, $output) = runbash($host, $longname, $job);
+	elsif ($jobtype eq ".sh") {
+		($outcome, $output) = runbash($host, $job, $jobfile);
 	}
 	else {
-		printfail("Invalid job type '$type'");
+		printfail("Invalid job type '$jobtype'");
 		$outcome = "failed";
-		$output = "runexp: Invalid job type '$type'";
+		$output = "runexp: Invalid job type '$jobtype'";
 	}
+
+	unlink $jobfile;
 
 	return ($outcome, $output);
 }
@@ -140,29 +143,25 @@ sub runandlog {
 # Run a MATLAB job
 sub runmatlab {
 	my $host = shift;
-	my $longname = shift;
-	my $shortname = shift;
-	my $jobdir = shift;
+	my $jobname = shift;
+	my $job = shift;
 
-	if (-f "$shortname.m") {
-		printfail "A script named '$shortname.m' in the current working dir causes conflict";
-		return;
-	}
+	$job =~ s/\.m$//;
 
-	my $matlabcmd ="try; $shortname; catch e, fprintf('Failed: %s\\n', e.message); end";
-	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"addpath('$jobdir'); $matlabcmd; quit;\"";
-	return runandlog($host, $longname, $cmdline);
+	my $matlabcmd ="try; $job; catch e, fprintf('Failed: %s\\n', e.message); end";
+	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"$matlabcmd; quit;\" 2>&1";
+	return runandlog($host, $jobname, $cmdline);
 }
 
 
 # Run a bash job
 sub runbash {
 	my $host = shift;
-	my $longname = shift;
+	my $jobname = shift;
 	my $job = shift;
 
 	my $cmdline = "bash '$job'";
-	return runandlog($host, $longname, $cmdline);
+	return runandlog($host, $jobname, $cmdline);
 }
 
 

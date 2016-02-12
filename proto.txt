@@ -38,7 +38,7 @@ State 3: SendJob
 
 	1. If there are no more jobs to run, go to state 5
 	2. Take the next job from the list, write on the client's socket in the
-	   form "LABORO <JOBNAME> <SIZE>", where <SIZE> is the size of the job
+	   form "LABORO <JOBNAME> <JOBTYPE> <SIZE>", where <SIZE> is the size of the job
 	   in bytes
 	3. Wait for the client to reply with "PRETA"
 	4. Send the contents of the job
@@ -104,7 +104,7 @@ State 3: RunJob
 	1. Stop all other workers from communicating with the server
 	2. Send a request to the server in the form "PETO". Wait for reply
 	3. If the reply was "FINO", reallow communications and go to state 5
-	4. Message should be "LABORO <JOBNAME> <SIZE>.
+	4. Message should be "LABORO <JOBNAME> <JOBTYPE> <SIZE>.
 	5. Acknowledge by sending the server the message "PRETA"
 	6. Receive <SIZE> bytes of data from the server into <JOBCONTENTS>
 	7. Write <JOBCONTENTS> to a temporary file
