@@ -10,7 +10,8 @@ use threads::shared;
 use Getopt::Long;
 
 use rxplib::config qw(readconfig);
-use rxplib::verbose qw(verbose setverbose);
+use rxplib::logging qw(verbose setverbose printmsg);
+use rxplib::jobs qw(runjob);
 
 $| = 1;
 
@@ -137,130 +138,10 @@ sub workerloop {
 		my $job = askforjob($id, $serversocket);
 		(verbose "Worker $id: finished" and return) unless defined $job;
 		verbose "Worker $id: got a new job -- $job";
-		runjob($job);
+		runjob($hostname, $runpath, $outpath, $job);
 	}
 }
 
-
-# Print information before running a job
-sub printrun {
-        my $jobname = shift;
-
-        my $time = `date "+%b %d %T"`;
-        chomp $time;
-
-        printf "$time [$hostname] Running $jobname\n";
-}
-
-
-# Print a fail log
-sub printfail {
-	my $failmessage = shift;
-        
-	my $time = `date "+%b %d %T"`;
-        chomp $time;
-
-        printf "$time [$hostname] ERROR: $failmessage\n";
-}
-
-
-sub runandlog {
-	my $longname = shift;
-	my $cmdline = shift;
-	my $output = shift;
-
-	printrun($longname);
-
-	verbose "Job info";
-	verbose "  name   : $longname";
-	verbose "  output : $output";
-	verbose "  cmdline: $cmdline";
-
-	my $starttime = `date`;
-	chomp $starttime;
-	verbose "Running job $longname";
-	my $progoutput = `$cmdline`;
-	my $progstatus = $?;
-	verbose "Finished job $longname";
-	my $endtime = `date`;
-	chomp $endtime;
-
-	open OUTPUT, ">$output" or die "Error opening $output";
-	print OUTPUT "$starttime -- [$hostname] Running $longname\n";
-	print OUTPUT "> $cmdline\n";
-	print OUTPUT "$endtime -- Finished running\n";
-	print OUTPUT "Program exited with status $progstatus\n";
-	print OUTPUT "Program output follows\n";
-	print OUTPUT "\n";
-	print OUTPUT $progoutput;
-	close OUTPUT;
-}
-
-# Run a MATLAB job
-sub runmatlab {
-	my $longname = shift;
-	my $shortname = shift;
-	my $jobdir = shift;
-	my $output = shift;
-
-	if (-f "$shortname.m") {
-		printfail "A script named '$shortname.m' in the current working dir causes conflict";
-		return;
-	}
-
-	print "<<";
-	my $matlabcmd ="try; $shortname; catch e, fprintf('Failed: %s\\n', e.message); end";
-	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"addpath('$jobdir'); $matlabcmd; quit;\"";
-	print ">>\n";
-	runandlog($longname, $cmdline, $output);
-}
-
-
-# Run a bash job
-sub runbash {
-	my $longname = shift;
-	my $job = shift;
-	my $output = shift;
-
-	my $cmdline = "bash '$job'";
-	runandlog($longname, $cmdline, $output);
-}
-
-
-# Run a new job
-sub runjob {
-	my $job = shift;
-
-	# Separate /path/runs/subpath/job.ext into long name (subpath/job) and shortname (job)
-	$job =~ m{^$runpath/(.+)} or die "Can't match job '$job' against m{^$runpath/(.+)}";
-	my $longname = $1;
-	$longname =~ s{\.[^.]+$}{};
-	my $shortname = $longname;
-	$shortname =~ s{(.*/)?([^/]+)}{$2};
-
-	# Compose the output file path
-	my $output = "$outpath/$longname.res";
-
-	# Get the job directory (full path)
-	my $jobdir = $job;
-	$jobdir =~ s{(.*/)[^/]+}{$1};
-
-	# If the job has an extension, use it as job type
-	my $type = $job =~ /\.[^.]+/ ? $& : '';
-
-	# Write the output file preamble
-
-
-	if ($type eq ".m") {
-		runmatlab($longname, $shortname, $jobdir, $output);
-	}
-	elsif ($type eq ".sh") {
-		runbash($longname, $job, $output);
-	}
-	else {
-		printfail("Invalid job type '$type'");
-	}
-}
 
 
 # Ask server for job
