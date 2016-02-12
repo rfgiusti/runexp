@@ -8,7 +8,11 @@ use IO::Socket::INET;
 use threads;
 use threads::shared;
 use Getopt::Long;
+use File::Basename qw(dirname);
 
+my $__scriptdir;
+BEGIN { $__scriptdir = dirname(abs_path($0)); }
+use lib $__scriptdir;
 use rxplib::config qw(readconfig);
 use rxplib::logging qw(verbose setverbose printmsg);
 use rxplib::jobs qw(runjob);
