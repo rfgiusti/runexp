@@ -67,6 +67,38 @@ We save our job as a `.m` file in `/home/me/myexperiment/runs/job5.m`. That is a
    The queue manager will print the names of any jobs that didn't finish succesfully and quit
 
 
+## Default configuration
+
+To avoid having to provide connection information all the time, you can write a file in `~/.runexp` with the default
+configuration. Options are given in the form `KEY=VALUE` and there can only be one option per line. Lines that begin
+with `#` are comments.
+
+The valid keys are:
+
+- `port`: default port used both by the queue manager and the experiment runner
+- `qmanager`: default address where the queue manager is running
+- `hostname`: by default, the runner will take the hostname from the output of `hostname -s` and send it to the manager.
+  This name will be used to the manager when displaying information and writing log files. If you want to use a
+  different value, you may set it here.
+
+Example
+
+**Queue manager configuration**
+
+```
+port=12345
+```
+
+**Runner configuration**
+
+```
+port=12345
+qmanager=192.168.0.1
+```
+
+However, it is still necessary to specify the number of jobs when invoking the runner.
+
+
 ## Known limitations
 
 - Failure/success detection is performed by reading the script output, and a particular string pattern is required
