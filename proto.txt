@@ -48,14 +48,17 @@ State 4: ProcessJob
 	   spawned by the queue manager, got to step 2. Otherwise, drop the
 	   client with an error message
 	2. Take note that the job <JOBNAME> was finished with status <STATUS>
-	3. Go to state 2
+	3. Go to source state (state 2 or state 5)
 
 State 5: WaitClose
 
-	1. Write the message "FINO" on the client's socket indicating that
+	1. If coming back from state 4, go to step 3
+	2. Write the message "FINO" on the client's socket indicating that
 	   there are no more jobs to run
-	2. Wait for client to reply with "KOMPRENAS"
-	3. Drop the connection
+	3. Wait for client reply
+	4. If reply was "FINO ANKAU", then the client is also done, drop the
+	   connection and terminate client
+	5. If reply was "REZULTO", go to state 4
 
 
 
@@ -99,6 +102,6 @@ State 2: WorkerLoop
 State 3: WaitClose
 
 	1. If this is the last worker to reach the WaitClose state, send the
-	   server the message "KOMPRENAS" in response to its "PETO". Close
+	   server the message "FINO ANKAU" in response to its "FINO". Close
 	   the connection and terminate the worker. Otherwise, just 
 	   terminate the worker
