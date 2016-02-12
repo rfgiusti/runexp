@@ -30,7 +30,7 @@ each one of them invoking that function with a different parameter value. For in
 
 ```Matlab
 acc = myidea(5);
-fprintf('Accuracy with parameter value %d was %0.4f\n', acc);
+fprintf('Accuracy with parameter value '5' was %0.4f\n', acc);
 fprintf('RES:done\n');
 ```
 
