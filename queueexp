@@ -22,7 +22,7 @@ use rxplib::logging qw(verbose setverbose printpct);
 $| = 1;
 
 # Communication protocol version
-my $PROTOCOL_VERSION = 1.0;
+my $PROTOCOL_VERSION = "1.1";
 
 # Check arguments and set default paths
 my $runsubpath = 'runs';
@@ -262,7 +262,7 @@ sub client_hail {
 
 	# Send protocol version to client
 	verbose "Client $name: sending 'VERSIO'";
-	$socket->send(sprintf("VERSIO %.1f", $PROTOCOL_VERSION));	
+	$socket->send("VERSIO $PROTOCOL_VERSION");
 
 	# Wait for client to acknowledge
 	verbose "Client $name: waiting 'KOMPRENAS'";
@@ -273,17 +273,22 @@ sub client_hail {
 }
 
 
-# Wait for a client to send a request for jobs
-sub client_readjobrequest {
+# Wait for a client to send request for job or job response
+sub client_readjobmsg {
 	my $socket = shift;
 	my $name = shift;
 	my $msg;
 
-	verbose "Client $name: waiting for job request";
+	verbose "Client $name: waiting for message";
 	$socket->recv($msg, 1024);
 
-	verbose "Cliend $name: received message '$msg'";
-	return $msg eq "PETO";
+	verbose "Client $name: received message '$msg'";
+	if ($msg eq "PETO" || $msg eq "FINO ANKAU" || $msg =~ /^REZULTO/) {
+		return $msg;
+	}
+	else {
+		return undef;
+	}
 }
 
 
@@ -299,23 +304,38 @@ sub client_sendjob {
 
 	verbose "Client $name: sending job";
 	$socket->send($jobname);
+	
+	lock $ranjobs;
+	$ranjobs++;
+	printpct($name, 100 * ($ranjobs / $totaljobs), getjobname($job));
 }
 
 
-# Send FINO message to client and receives their acknowledgement
-sub client_bye {
+# Send FINO message to client
+sub client_fino {
 	my $socket = shift;
 	my $name = shift;
 
 	verbose "Client $name: no more jobs to run";
 	verbose "Client $name: sending FINO message";
 	$socket->send('FINO');
+}
+			
 
-	verbose "Client $name: waiting for acknowledgment";
-	my $msg;
-	$socket->recv($msg, 1024);
-	verbose "Client $name: received '$msg'";
-	return $msg eq "KOMPRENAS";
+# Do what you got to do when the client finishes a job
+sub client_processresult {
+	my $socket = shift;
+	my $name = shift;
+	my $job = shift;
+	my $res = shift;
+
+	verbose "Client $name: finished $job ($res)";
+
+	# Receive job output
+	# STUB
+	
+	verbose "Client $name: acknowledge job finished";
+	$socket->send("KOMPRENAS");
 }
 
 
@@ -336,21 +356,35 @@ sub clientloop {
 	(endthread and return) unless defined $name;
 
 	while (1) {
-		(endthread and return) unless client_readjobrequest($socket, $name);
-		
-		verbose "Client $name: requested a job";
-		my $nextjob = getnextjob();
-		last unless defined $nextjob;
+		# Wait for client to send a message. Expects
+		#   PETO         client requests a job
+		#   REZULTO      client informs a job was finished
+		#   FINO ANKAU   client informs he's done with his jobs
+		my $req = client_readjobmsg($socket, $name);
+		(printfail($name, "Bad request"), last) unless defined $req;
 
-		client_sendjob($socket, $name, $nextjob);
-		{
-			lock $ranjobs;
-			$ranjobs++;
-			printpct($name, 100 * ($ranjobs / $totaljobs), getjobname($nextjob));
+		if ($req eq "PETO") {
+			verbose "Client $name: requested a job";
+			my $nextjob = getnextjob();
+
+			if (defined $nextjob) {
+				client_sendjob($socket, $name, $nextjob);
+			}
+			else {
+				client_fino($socket, $name)
+			}
+		}
+		elsif ($req eq "FINO ANKAU") {
+			last;
+		}
+		else {
+			$req =~ /REZULTO (.*) (success|failure)/;
+			my $job = $1;
+			my $res = $2;
+			client_processresult($socket, $name, $job, $res);
 		}
 	}
 
-	client_bye($socket, $name);
 	endthread;
 }
 
@@ -378,7 +412,7 @@ experiments in several experiment servers using a distributed file system as
 communication medium.
 
 Options:
-	
+
 	<BASEDIR>  Specify where runexp should look for the jobs and  outputs
 		   directory. If ommitted, the current working directory is
 		   used. This does not change the current working directory.
@@ -396,6 +430,6 @@ Options:
 		   Print remaining jobs and quit.
 	-v         Print detailed information.
 	-p <PORT>  Listen on port <PORT>
-	
+
 runexp is hosted at GitHub. For source code and more information on how to use
 runexp, please visit github.com/rfgiusti/runexp

@@ -125,11 +125,11 @@ sub runandlog {
 	chomp $endtime;
 
 	# See if the output has the RES:done flag	
-	my $outcome = _hasdonestring(split /\n/, $progoutput);
-	verbose "Finished job $longname" . ($outcome ? "" : " (but it failed)");
+	my $outcome = (_hasdonestring(split /\n/, $progoutput) ? "success" : "failure");
+	verbose "Finished job $longname with $outcome";
 
 	open OUTPUT, ">$output" or die "Error opening $output";
-	print OUTPUT "runexp summary: " . ($outcome ? "success" : "failure") . "\n\n";
+	print OUTPUT "runexp summary: $outcome\n\n";
 	print OUTPUT "$starttime -- [$hostname] Running $longname\n";
 	print OUTPUT "> $cmdline\n";
 	print OUTPUT "$endtime -- Finished running\n";
@@ -138,6 +138,8 @@ sub runandlog {
 	print OUTPUT "\n";
 	print OUTPUT $progoutput;
 	close OUTPUT;
+
+	return $outcome;
 }
 
 
@@ -154,11 +156,9 @@ sub runmatlab {
 		return;
 	}
 
-	print "<<";
 	my $matlabcmd ="try; $shortname; catch e, fprintf('Failed: %s\\n', e.message); end";
 	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"addpath('$jobdir'); $matlabcmd; quit;\"";
-	print ">>\n";
-	runandlog($host, $longname, $cmdline, $output);
+	return runandlog($host, $longname, $cmdline, $output);
 }
 
 
@@ -170,7 +170,7 @@ sub runbash {
 	my $output = shift;
 
 	my $cmdline = "bash '$job'";
-	runandlog($host, $longname, $cmdline, $output);
+	return runandlog($host, $longname, $cmdline, $output);
 }
 
 

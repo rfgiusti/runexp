@@ -20,8 +20,7 @@ use rxplib::jobs qw(runjob);
 $| = 1;
 
 # Protocol version
-my $PROTOCOL_VERSION = 1.0;
-
+my $PROTOCOL_VERSION = 1.1;
 
 # Check arguments and set default paths
 my $maxjobs = undef;
@@ -116,7 +115,6 @@ for my $i (1 .. $maxjobs) {
 	my $worker = threads->create(\&workerloop, $i, $serversocket);
 	push @workers, $worker;
 }
-print "No more new jobs to run. Waiting for current jobs to finish...\n";
 for my $worker (@workers) {
 	$worker->join();
 }
@@ -135,6 +133,7 @@ print "Done!\n";
 sub workerloop {
 	my $id = shift;
 	my $serversocket = shift;
+	my $joboutcome;
 
 	verbose "Worker $id started";
 
@@ -142,10 +141,32 @@ sub workerloop {
 		my $job = askforjob($id, $serversocket);
 		(verbose "Worker $id: finished" and return) unless defined $job;
 		verbose "Worker $id: got a new job -- $job";
-		runjob($hostname, $runpath, $outpath, $job);
+		$joboutcome = runjob($hostname, $runpath, $outpath, $job);
+		sendjoboutcome($id, $serversocket, $job, $joboutcome);
 	}
 }
 
+
+# Tell the manager that a job has been complete and if it was successful
+sub sendjoboutcome {
+	my $id = shift;
+	my $serversocket = shift;
+	my $job = shift;
+	my $outcome = shift;
+
+	my $msg = "REZULTO $job $outcome";
+	
+	verbose "Worker $id: trying to get lock of communications";
+	lock $commbusy;
+	verbose "Worker $id: I have the lock";
+
+	verbose "Worker $id: sending message '$msg'";
+	$serversocket->send($msg);
+
+	verbose "Worker $id: waiting for server acknowledgement";
+	$serversocket->recv($msg, 1024);
+	die "Unexpected message received: $msg\n" unless $msg eq "KOMPRENAS";
+}
 
 
 # Ask server for job
@@ -191,9 +212,9 @@ sub hail_server {
 	my $msg;
 	$serversocket->recv($msg, 1024);
 	verbose "Received version string '$msg'";
-	die "Bad protocol version: $msg\n" unless $msg =~ /^VERSIO \d+(.\d+)?$/;
+	die "Bad protocol version: '$msg'\n" unless $msg =~ /^VERSIO \d+(.\d+)?$/;
 	$msg =~ s/^VERSIO //;
-	die "Bad protocol version: $msg\n" unless $msg == 1.0;
+	die "Bad protocol version: '$msg'\n" unless $msg eq "1.1";
 
 	verbose "Version accepted. Sending server acknowledgement message";
 	$serversocket->send("KOMPRENAS");
@@ -204,8 +225,8 @@ sub hail_server {
 sub bye_server {
 	my $serversocket = shift;
 
-	verbose "Sending server the 'KOMPRENAS' message";
-	$serversocket->send("KOMPRENAS");
+	verbose "Sending server the 'FINO ANKAU' message";
+	$serversocket->send("FINO ANKAU");
 }
 
 __END__
