@@ -24,26 +24,19 @@ my $PROTOCOL_VERSION = 1.1;
 
 # Check arguments and set default paths
 my $maxjobs = undef;
-my $runsubpath = 'runs';
-my $outsubpath = 'outputs';
-my $basedir = undef;
 my $qmanager = undef;
 my $serveraddress = undef;
 my $serverport = undef;
 my $hostname = undef;
-my $path;
 
 GetOptions(
-	'runs|r=s'	=> \$runsubpath,
-	'outputs|o=s'	=> \$outsubpath,
 	'connect|c=s'	=> \$qmanager,
 	'host|h=s'	=> \$hostname,
 	'verbose|v'	=> sub { setverbose(1); },
 );
 
-# Two bare options are accepted: number of jobs and base dir, in that order
+# One bare options for the number of jobs is required
 $maxjobs = shift @ARGV;
-$basedir = shift @ARGV;
 die "Extra arguments: " . join(' ', @ARGV) . "\n" if @ARGV;
 
 if (defined $qmanager) {
@@ -54,24 +47,8 @@ if (defined $qmanager) {
 	$serverport =~ s/^:// if defined $serverport;
 }
 
-if (defined $basedir) {
-	print "Overriding base directory from './' with '$basedir'\n";
-	$path = abs_path($basedir);
-}
-else {
-	$path = abs_path(getcwd());
-}
-$path =~ s{/$}{};
-my $runpath = "$path/$runsubpath";
-my $outpath = "$path/$outsubpath";
-$runpath =~ s{/$}{};
-$outpath =~ s{/$}{};
-
 die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
 die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
-
-die "Can't find runs directory at $runpath\n" unless -d $runpath;
-die "Can't find outputs directory at $outpath\n" unless -d $outpath;
 
 # Read configurations from file
 my %conf = readconfig();
