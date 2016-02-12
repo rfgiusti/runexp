@@ -41,17 +41,34 @@ sub donejob {
 	
 	return 0 unless -f $resfile;
 
-	my $done = 0;
 	open OUTFILE, "<$resfile";
-	while (my $line = <OUTFILE>) {
-		if ($line =~ /RES:/ && $line !~ /RES:\s*fail/) {
-			$done = 1;
-			last;
-		}
-	}
-	close OUTFILE;
 
-	return $done;
+	# See if the first line has a runexp summary
+	my $line = <OUTFILE>;
+	if ($line =~ /^runexp summary: (success|failure)/) {
+		my $status = $1;
+		return $status eq "success";
+	}
+
+	# Otherwise, load everything and search for the string from the end to the start
+	my @lines = <OUTFILE>;
+	close OUTFILE;
+	return _hasdonestring(@lines);
+}
+
+
+# Check if the RES:done string is found in the output
+sub _hasdonestring {
+	my @lines = @_;
+
+	my $p = scalar @lines;
+	while ($p--) {
+		if ($lines[$p] =~ /RES:/) {
+			return $lines[$p] !~ /RES:\s*failed/i;
+	       }
+	}
+
+	return 0;
 }
 
 
@@ -104,11 +121,15 @@ sub runandlog {
 	verbose "Running job $longname";
 	my $progoutput = `$cmdline`;
 	my $progstatus = $?;
-	verbose "Finished job $longname";
 	my $endtime = `date`;
 	chomp $endtime;
 
+	# See if the output has the RES:done flag	
+	my $outcome = _hasdonestring(split /\n/, $progoutput);
+	verbose "Finished job $longname" . ($outcome ? "" : " (but it failed)");
+
 	open OUTPUT, ">$output" or die "Error opening $output";
+	print OUTPUT "runexp summary: " . ($outcome ? "success" : "failure") . "\n\n";
 	print OUTPUT "$starttime -- [$hostname] Running $longname\n";
 	print OUTPUT "> $cmdline\n";
 	print OUTPUT "$endtime -- Finished running\n";
