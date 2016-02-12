@@ -307,7 +307,7 @@ sub client_sendjob {
 	
 	lock $ranjobs;
 	$ranjobs++;
-	printpct($name, 100 * ($ranjobs / $totaljobs), getjobname($job));
+	printpct($name, 100 * ($ranjobs / $totaljobs), getjobname($job, $runpath));
 }
 
 
@@ -328,14 +328,29 @@ sub client_processresult {
 	my $name = shift;
 	my $job = shift;
 	my $res = shift;
+	my $size = shift;
+	my $msg;
 
 	verbose "Client $name: finished $job ($res)";
 
-	# Receive job output
-	# STUB
-	
-	verbose "Client $name: acknowledge job finished";
-	$socket->send("KOMPRENAS");
+	verbose "Client $name: tell client I'm ready to receive the program output";
+	$socket->send("PRETA");
+
+	verbose "Client $name: waiting for program output ($size bytes)";
+	$socket->recv($msg, $size + 512);
+
+	my $longname = getjobname($job, $runpath);
+
+	print "\n\n\njob=$job\nlongname=$longname\n";
+
+	my $outputfile = "$outpath/$longname.res";
+	open FILE, ">$outputfile" or die "Error writing file $outputfile\n";
+	print FILE $msg;
+	close FILE;
+
+	verbose "Client $name: output written to $outputfile";
+	verbose "Client $name: sending done message";
+	$socket->send("RICEVIS");
 }
 
 
@@ -378,10 +393,11 @@ sub clientloop {
 			last;
 		}
 		else {
-			$req =~ /REZULTO (.*) (success|failure)/;
+			$req =~ /REZULTO (.*) (success|failure) (\d+)/;
 			my $job = $1;
 			my $res = $2;
-			client_processresult($socket, $name, $job, $res);
+			my $outputsize = $3;
+			client_processresult($socket, $name, $job, $res, $outputsize);
 		}
 	}
 

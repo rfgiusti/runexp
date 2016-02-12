@@ -134,6 +134,7 @@ sub workerloop {
 	my $id = shift;
 	my $serversocket = shift;
 	my $joboutcome;
+	my $joboutput;
 
 	verbose "Worker $id started";
 
@@ -141,8 +142,8 @@ sub workerloop {
 		my $job = askforjob($id, $serversocket);
 		(verbose "Worker $id: finished" and return) unless defined $job;
 		verbose "Worker $id: got a new job -- $job";
-		$joboutcome = runjob($hostname, $runpath, $outpath, $job);
-		sendjoboutcome($id, $serversocket, $job, $joboutcome);
+		($joboutcome, $joboutput) = runjob($hostname, $runpath, $job);
+		sendjoboutcome($id, $serversocket, $job, $joboutcome, $joboutput);
 	}
 }
 
@@ -153,19 +154,30 @@ sub sendjoboutcome {
 	my $serversocket = shift;
 	my $job = shift;
 	my $outcome = shift;
+	my $output = shift;
 
-	my $msg = "REZULTO $job $outcome";
+	my $outputlen = length $output;
+	my $msg = "REZULTO $job $outcome $outputlen";
 	
-	verbose "Worker $id: trying to get lock of communications";
+	verbose "Worker $id: [sendjoboutcome] trying to get lock of communications";
 	lock $commbusy;
-	verbose "Worker $id: I have the lock";
+	verbose "Worker $id: [sendjoboutcome] I have the lock";
 
 	verbose "Worker $id: sending message '$msg'";
 	$serversocket->send($msg);
 
 	verbose "Worker $id: waiting for server acknowledgement";
 	$serversocket->recv($msg, 1024);
-	die "Unexpected message received: $msg\n" unless $msg eq "KOMPRENAS";
+	die "Unexpected message received: $msg\n" unless $msg eq "PRETA";
+
+	verbose "Worker $id: sending job outout ($outputlen bytes)";
+	$serversocket->send($output);
+
+	verbose "Worker $id: waiting for server acknowledgement";
+	$serversocket->recv($msg, 1024);
+	die "Unexpected message received: $msg\n" unless $msg eq "RICEVIS";
+
+	verbose "Worker $id: [sendjoboutcome] relinquishing lock";
 }
 
 
@@ -177,9 +189,9 @@ sub askforjob {
 	my $msg;
 
 	# Lock the communication flag
-	verbose "Worker $id: trying to get lock of communications";
+	verbose "Worker $id: [askforjob] trying to get lock of communications";
 	lock($commbusy);
-	verbose "Worker $id: I have the lock";
+	verbose "Worker $id: [askforjob] I have the lock";
 
 	# If another worker received a FINO message, then there are no more jobs
 	(verbose "Worker $id: MASTERSTOP raised" and return undef) if $masterstop;
@@ -196,6 +208,7 @@ sub askforjob {
 		$masterstop = 1;
 		return undef;
 	}
+	verbose "Worker $id: [askforjob] relinquishing lock";
 	return "$runpath/$msg";
 }
 

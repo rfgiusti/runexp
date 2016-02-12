@@ -76,29 +76,30 @@ sub _hasdonestring {
 sub runjob {
 	my $host = shift;
 	my $runpath = shift;
-	my $outpath = shift;
 	my $job = shift;
 
 	my ($shortname, $longname) = getjobname($job, $runpath);
-
-	# Compose the output file path
-	my $output = "$outpath/$longname.res";
 
 	# Get the job directory (full path)
 	my $jobdir = $job;
 	$jobdir =~ s{(.*/)[^/]+}{$1};
 
 	# Run the job according to its type (based on the extension)
+	my ($outcome, $output);
 	my $type = $job =~ /\.[^.]+/ ? $& : '';
 	if ($type eq ".m") {
-		runmatlab($host, $longname, $shortname, $jobdir, $output);
+		($outcome, $output) = runmatlab($host, $longname, $shortname, $jobdir);
 	}
 	elsif ($type eq ".sh") {
-		runbash($host, $longname, $job, $output);
+		($outcome, $output) = runbash($host, $longname, $job);
 	}
 	else {
 		printfail("Invalid job type '$type'");
+		$outcome = "failed";
+		$output = "runexp: Invalid job type '$type'";
 	}
+
+	return ($outcome, $output);
 }
 
 
@@ -107,14 +108,9 @@ sub runandlog {
 	my $hostname = shift;
 	my $longname = shift;
 	my $cmdline = shift;
-	my $output = shift;
 
 	printmsg($hostname, "Running $longname");
-
-	verbose "Job info";
-	verbose "  name   : $longname";
-	verbose "  output : $output";
-	verbose "  cmdline: $cmdline";
+	verbose("Running job $longname with command line $cmdline");
 
 	my $starttime = `date`;
 	chomp $starttime;
@@ -128,18 +124,16 @@ sub runandlog {
 	my $outcome = (_hasdonestring(split /\n/, $progoutput) ? "success" : "failure");
 	verbose "Finished job $longname with $outcome";
 
-	open OUTPUT, ">$output" or die "Error opening $output";
-	print OUTPUT "runexp summary: $outcome\n\n";
-	print OUTPUT "$starttime -- [$hostname] Running $longname\n";
-	print OUTPUT "> $cmdline\n";
-	print OUTPUT "$endtime -- Finished running\n";
-	print OUTPUT "Program exited with status $progstatus\n";
-	print OUTPUT "Program output follows\n";
-	print OUTPUT "\n";
-	print OUTPUT $progoutput;
-	close OUTPUT;
+	# Compose the output in a string that will be sent back to the server
+	my $outstr = "runexp summary: $outcome\n\n";
+	$outstr .= "$starttime -- [$hostname] Running $longname\n";
+	$outstr .= "> $cmdline\n";
+	$outstr .= "$endtime -- Finished running\n";
+	$outstr .= "Program exited with status $progstatus\n";
+	$outstr .= "Program output follows\n\n";
+	$outstr .= $progoutput;
 
-	return $outcome;
+	return ($outcome, $outstr);
 }
 
 
@@ -149,7 +143,6 @@ sub runmatlab {
 	my $longname = shift;
 	my $shortname = shift;
 	my $jobdir = shift;
-	my $output = shift;
 
 	if (-f "$shortname.m") {
 		printfail "A script named '$shortname.m' in the current working dir causes conflict";
@@ -158,7 +151,7 @@ sub runmatlab {
 
 	my $matlabcmd ="try; $shortname; catch e, fprintf('Failed: %s\\n', e.message); end";
 	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"addpath('$jobdir'); $matlabcmd; quit;\"";
-	return runandlog($host, $longname, $cmdline, $output);
+	return runandlog($host, $longname, $cmdline);
 }
 
 
@@ -167,10 +160,9 @@ sub runbash {
 	my $host = shift;
 	my $longname = shift;
 	my $job = shift;
-	my $output = shift;
 
 	my $cmdline = "bash '$job'";
-	return runandlog($host, $longname, $cmdline, $output);
+	return runandlog($host, $longname, $cmdline);
 }
 
 
