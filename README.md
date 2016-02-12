@@ -7,7 +7,7 @@ The simplicity of runexp means it can be executed on a network without need of r
 to install anything on the remote machines.
 
 This is not a load balancement manager. Each experiment server must be started with the number of experiments
-it will run in parallel, adn each experiment server must have their own copies of any files the experiments will
+it will run in parallel, and each experiment server must have their own copies of any files the experiments will
 require to run. The purpose of runexp is that dynamically dispatching experiments to the servers is more efficient
 and easier than manually assigning experiments to each experiment server.
 
@@ -45,7 +45,7 @@ We save our job as a `.m` file in `/home/me/myexperiment/runs/job5.m`. That is a
 1. Make sure the servers have the required files. In this case, the servers should have, somewhere, all the files
    of our program that is in `/home/me/myexperiment`.
 1. Go to the path where the program is hosted (e.g., `/home/me/myexperiment`)
-1. Launch the queue manager. For instance: `queuemanager -p 5432` (this will open the manager in the port 5432)
+1. Launch the queue manager. For instance: `queueexp -p 5432` (this will open the manager in the port 5432)
 
 
 
