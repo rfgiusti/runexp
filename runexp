@@ -7,29 +7,16 @@ use File::Path qw(make_path);
 use IO::Socket::INET;
 use threads;
 use threads::shared;
-use rxplib::config qw(readconfig);
 use Getopt::Long;
+
+use rxplib::config qw(readconfig);
+use rxplib::verbose qw(verbose setverbose);
 
 $| = 1;
 
 # Protocol version
 my $PROTOCOL_VERSION = 1.0;
 
-# Print detailed information if running verbosely
-my $verbose :shared = 0;
-sub verbose {
-	return 1 unless $verbose;
-
-	lock($verbose);
-	my $msg = shift;
-	
-	my $time = `date "+%b %d %T"`;
-	chomp $time;
-
-	printf "$time [ INFO ] $msg\n";
-
-	return 1;
-}
 
 # Check arguments and set default paths
 my $maxjobs = undef;
@@ -47,6 +34,7 @@ GetOptions(
 	'outputs|o=s'	=> \$outsubpath,
 	'connect|c=s'	=> \$qmanager,
 	'host|h=s'	=> \$hostname,
+	'verbose|v'	=> sub { setverbose(1); },
 );
 
 # Two bare options are accepted: number of jobs and base dir, in that order
