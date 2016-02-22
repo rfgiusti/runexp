@@ -6,8 +6,11 @@ require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(donejob runjob getjobname);
 
+use threads::shared;
+
 use rxplib::logging qw(verbose printfail printmsg);
 
+my %aftermaths :shared;
 
 # Return the job short name and the job long name
 sub getjobname {
@@ -25,8 +28,37 @@ sub getjobname {
 }
 
 
-# Check if a job has already been executed. A job has been executed if its output file contains the string RES: or if
-# a verification application returns 1
+# Load aftermath table from a file
+sub loadaftermaths {
+	my $file = shift;
+
+	lock %aftermath;
+	open FILE, "<$file" or die "Error loading aftermath table: $!\n";
+	my @filedata = <FILE>;
+	close FILE;
+	%aftermath = map { my $s = $_; chomp $s; $x } @filedata;
+	verbose "Loaded aftermath results for " . scalar (keys %aftermath ) . " experiment(s)";
+}
+
+
+# Write aftermath table to a file
+sub saveaftermath {
+	my $file = shift;
+
+	lock %aftermath;
+	my @aftermath = %aftermath;
+	open FILE, ">$file" or die "Error opening aftermath table file: $!\n";
+	print FILE join("\n", @aftermath);
+	close FILE;
+}
+
+
+# Check if a job has already been executed. A job has been executed if:
+# 	1. It has an output file
+# 	2. Either:
+# 	2.1. It is listed as "1" in the aftermath table, OR
+# 	2.2. It contains a runexp summary string in the beginning of the output, OR
+# 	2.3. It contains the RES: string in the output
 sub donejob {
 	my $jobfile = shift;
 	my $runpath = shift;
@@ -38,7 +70,11 @@ sub donejob {
 	$resfile =~ s{^$runpath}{$outpath};
 	$resfile =~ s{\.[^.]*$}{.res};
 	verbose "Searching output file '$resfile'";
-	
+
+	{	
+		lock %aftermath;
+		return $aftermath{$
+	}
 	return 0 unless -f $resfile;
 
 	open OUTFILE, "<$resfile";
