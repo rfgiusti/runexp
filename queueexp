@@ -17,7 +17,7 @@ BEGIN { $__scriptdir = dirname(abs_path($0)); }
 use lib $__scriptdir;
 use rxplib::config qw(readconfig);
 use rxplib::jobs qw(donejob getjobname);
-use rxplib::logging qw(verbose setverbose printpct setquiet setaftermath printaftermath);
+use rxplib::logging qw(verbose setverbose printpct setquiet printfail setaftermath printaftermath);
 
 $| = 1;
 
