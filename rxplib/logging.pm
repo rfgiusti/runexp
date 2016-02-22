@@ -4,7 +4,8 @@ use strict;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(verbose setverbose printfail printpct printmsg setquiet setaftermath printaftermath);
+our @EXPORT = qw(verbose setverbose printfail printprogress setprintprogress printmsg setquiet setaftermath
+	printaftermath);
 
 use threads::shared;
 
@@ -12,6 +13,7 @@ use threads::shared;
 my $verbose :shared = 0;
 my $quiet :shared = 0;
 my $aftermath :shared = "none";
+my $printprogress :shared = 1;
 sub verbose {
 	return 1 unless $verbose;
 
@@ -51,6 +53,17 @@ sub setquiet {
 }
 
 
+# Set print-progress or print-jobs mode
+sub setprintprogress {
+	my $mode = shift;
+
+	lock $printprogress;
+
+	$printprogress = $mode;
+	setquiet(1) if $mode;
+}
+
+
 # Set printaftermath flag on/off
 sub setaftermath {
 	my $mode = shift;
@@ -76,15 +89,22 @@ sub printfail {
 
 
 # Print message with done% information 
-sub printpct {
+sub printprogress {
 	my $host = shift;
-	my $pct = shift;
+	my $done = shift;
+	my $total = shift;
 	my $msg = shift;
 
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time [%5.1f%%] $host: $msg\n", $pct unless $quiet;
+	my $pct = 100 * ($done / $total);
+	if ($printprogress) {
+		printf "[%5.1f%%] $done/$total\r", $pct;
+	}
+	else {
+		printf "$time [%5.1f%%] $host: $msg\n", $pct unless $quiet;
+	}
 }
 
 
