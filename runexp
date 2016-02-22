@@ -16,6 +16,7 @@ use lib $__scriptdir;
 use rxplib::config qw(readconfig);
 use rxplib::logging qw(verbose setverbose printmsg);
 use rxplib::jobs qw(runjob);
+use rxplib::net qw(recvlong);
 
 $| = 1;
 
@@ -198,7 +199,7 @@ sub askforjob {
 	$serversocket->send("PRETA");
 
 	verbose "Worker $id: waiting job data ($jobsize bytes)";
-	$serversocket->recv($$jobdata, $jobsize + 512);
+	$$jobdata = recvlong($serversocket, $jobsize);
 
 	verbose "Worker $id: [askforjob] relinquishing lock";
 	return 1;

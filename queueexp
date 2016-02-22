@@ -18,6 +18,7 @@ use lib $__scriptdir;
 use rxplib::config qw(readconfig);
 use rxplib::jobs qw(donejob getjobname);
 use rxplib::logging qw(verbose setverbose printpct setquiet printfail setaftermath printaftermath);
+use rxplib::net qw(recvlong);
 
 $| = 1;
 
@@ -356,7 +357,7 @@ sub client_processresult {
 	$socket->send("PRETA");
 
 	verbose "Client $name: waiting for program output ($size bytes)";
-	$socket->recv($msg, $size + 512);
+	$msg = recvlong($socket, $size);
 
 	my $outputfile = "$outpath/$job.res";
 	open FILE, ">$outputfile" or die "Error writing file $outputfile\n";
