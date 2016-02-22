@@ -4,12 +4,13 @@ use strict;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(verbose setverbose printfail printpct printmsg);
+our @EXPORT = qw(verbose setverbose printfail printpct printmsg setquiet);
 
 use threads::shared;
 
 # Print detailed information if running verbosely
 my $verbose :shared = 0;
+my $quiet :shared = 0;
 sub verbose {
 	return 1 unless $verbose;
 
@@ -27,9 +28,25 @@ sub verbose {
 # Set verbose mode on/off
 sub setverbose {
 	my $mode = shift;
+
 	lock $verbose;
-	verbose "Entering verbose mode";
+	lock $quiet;
+
 	$verbose = $mode;
+	verbose "Entering verbose mode";
+	die "Can't enter verbose mode and quiet mode simultaneously\n" if $verbose && $quiet;
+}
+
+
+# Set quiet mode on/off
+sub setquiet {
+	my $mode = shift;
+
+	lock $verbose;
+	lock $quiet;
+
+	$quiet = $mode;
+	die "Can't enter verbose mode and quiet mode simultaneously\n" if $verbose && $quiet;
 }
 
 
@@ -53,7 +70,7 @@ sub printpct {
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time [%5.1f%%] $host: $msg\n", $pct;
+	printf "$time [%5.1f%%] $host: $msg\n", $pct unless $quiet;
 }
 
 
@@ -65,7 +82,7 @@ sub printmsg {
         my $time = `date "+%b %d %T"`;
         chomp $time;
 
-	printf "$time [$host] Running $msg\n";
+	printf "$time [$host] Running $msg\n" unless $quiet;
 }
 
 
