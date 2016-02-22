@@ -68,8 +68,14 @@ for my $key (keys %conf) {
 	}
 }
 
+# Unless the host name is specified in the configuration file, try to get it from the hostname command
 ($hostname = `hostname -s`, chomp $hostname) unless defined $hostname;
 die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0-9]+$/;
+
+# Save temporary files in /tmp/runexp
+unless (-d '/tmp/runexp') {
+	mkdir '/tmp/runexp' or die "Can't create temporary directory to store jobs: $!\n";
+}
 
 # The commbusy flag is used to indicate that a thread is trying to communicate with the server. We
 # lock this variable because otherwise we would have to lock $masterstop and $serversocket

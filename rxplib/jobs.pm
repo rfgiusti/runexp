@@ -80,9 +80,9 @@ sub runjob {
 	my $jobdata = shift;
 
 	# Write the job data into a temporary file
-	my $jobfile = `mktemp runexp_XXXXXXXXXX$jobtype`;
+	my $jobfile = `mktemp /tmp/runexp/runexp_XXXXXXXXXX$jobtype`;
 	chomp $jobfile;
-	open FILE, ">$jobfile";
+	open FILE, ">$jobfile" or return ("failure", "Run error: $!");
 	print FILE $jobdata;
 	close FILE;
 
@@ -147,8 +147,9 @@ sub runmatlab {
 	my $job = shift;
 
 	$job =~ s/\.m$//;
+	$job =~ s{^/tmp/runexp/}{};
 
-	my $matlabcmd ="try; $job; catch e, fprintf('Failed: %s\\n', e.message); end";
+	my $matlabcmd ="try; addpath('/tmp/runexp'); $job; catch e, fprintf('Failed: %s\\n', e.message); end";
 	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"$matlabcmd; quit;\" 2>&1";
 	return runandlog($host, $jobname, $cmdline);
 }
