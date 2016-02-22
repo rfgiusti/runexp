@@ -17,7 +17,7 @@ BEGIN { $__scriptdir = dirname(abs_path($0)); }
 use lib $__scriptdir;
 use rxplib::config qw(readconfig);
 use rxplib::jobs qw(donejob getjobname);
-use rxplib::logging qw(verbose setverbose printpct);
+use rxplib::logging qw(verbose setverbose printpct setquiet);
 
 $| = 1;
 
@@ -38,6 +38,7 @@ GetOptions(
 	'outputs|o=s'	=> \$outsubpath,
 	'print-jobs'	=> \$printjobs,
 	'random'	=> \$randomize,
+	'quiet|q'	=> sub { setquiet(1); },
 	'port|p=n'	=> \$port,
 	'verbose|v'	=> sub { setverbose(1); },
 ) or die "Executiong terminated.\n";
@@ -45,7 +46,6 @@ GetOptions(
 # Only one bare argument is accepted: the base dir
 $basedir = shift @ARGV;
 die "Extra arguments: " . join(' ', @ARGV) . "\n" if @ARGV;
-
 
 my $path;
 if (defined $basedir) {
@@ -394,6 +394,7 @@ Options:
 	--random   Run jobs in random order instead of lexicographical order.
 	--print-jobs
 		   Print remaining jobs and quit.
+	-q,--quiet Do not print job names. Can't be used with -v.
 	-v         Print detailed information.
 	-p <PORT>  Listen on port <PORT>
 	
