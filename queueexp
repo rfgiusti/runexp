@@ -17,7 +17,7 @@ BEGIN { $__scriptdir = dirname(abs_path($0)); }
 use lib $__scriptdir;
 use rxplib::config qw(readconfig);
 use rxplib::jobs qw(donejob getjobname);
-use rxplib::logging qw(verbose setverbose printpct setquiet);
+use rxplib::logging qw(verbose setverbose printpct setquiet setaftermath printaftermath);
 
 $| = 1;
 
@@ -39,6 +39,9 @@ GetOptions(
 	'print-jobs'	=> \$printjobs,
 	'random'	=> \$randomize,
 	'quiet|q'	=> sub { setquiet(1); },
+	'aftermath|a'	=> sub { setaftermath('all'); },
+	'success|s'	=> sub { setaftermath('success'); },
+	'failure|f'	=> sub { setaftermath('failure'); },
 	'port|p=n'	=> \$port,
 	'verbose|v'	=> sub { setverbose(1); },
 ) or die "Executiong terminated.\n";
@@ -363,6 +366,8 @@ sub client_processresult {
 	verbose "Client $name: output written to $outputfile";
 	verbose "Client $name: sending done message";
 	$socket->send("RICEVIS");
+
+	printaftermath($name, $job, $res);
 }
 
 
@@ -457,6 +462,12 @@ Options:
 	--print-jobs
 		   Print remaining jobs and quit.
 	-q,--quiet Do not print job names. Can't be used with -v.
+	-a,--aftermath
+		   Print a message of success/failure when jobs finish.
+	-s,--success
+		   Print a message when a job is executed successfully.
+	-f,--failure
+		   Print a message when a job finishes with failure.
 	-v         Print detailed information.
 	-p <PORT>  Listen on port <PORT>
 

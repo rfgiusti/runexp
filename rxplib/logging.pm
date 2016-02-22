@@ -4,13 +4,14 @@ use strict;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(verbose setverbose printfail printpct printmsg setquiet);
+our @EXPORT = qw(verbose setverbose printfail printpct printmsg setquiet setaftermath printaftermath);
 
 use threads::shared;
 
 # Print detailed information if running verbosely
 my $verbose :shared = 0;
 my $quiet :shared = 0;
+my $aftermath :shared = "none";
 sub verbose {
 	return 1 unless $verbose;
 
@@ -50,6 +51,19 @@ sub setquiet {
 }
 
 
+# Set printaftermath flag on/off
+sub setaftermath {
+	my $mode = shift;
+
+	die "aftermath mode '$mode' is invalid\n" unless $mode =~ /^(all|none|success|failure)$/;
+	
+	lock $aftermath;
+	$aftermath = $mode;
+
+	verbose "Set --aftermath: $aftermath";
+}
+
+
 # Print a fail log
 sub printfail {
 	my $id = shift;
@@ -71,6 +85,22 @@ sub printpct {
 	chomp $time;
 
 	printf "$time [%5.1f%%] $host: $msg\n", $pct unless $quiet;
+}
+
+
+# Print message with job result if $aftermath flag is true
+sub printaftermath {
+	my $host = shift;
+	my $job = shift;
+	my $res = shift;
+
+	return if $aftermath eq "none";
+	return if $aftermath ne "all" && $aftermath ne $res;
+
+	my $time = `date "+%b %d %T"`;
+	chomp $time;
+
+	printf "$time [RESULT] $host: finished $job with $res\n";
 }
 
 
