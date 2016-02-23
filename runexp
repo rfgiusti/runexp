@@ -248,7 +248,7 @@ experiment runner
 
 =head1 SYNOPSIS
 	
-  runex <MAXJOBS> [<BASEDIR>] [OPTIONS]
+runexp <MAXJOBS> [<BASEDIR>] [OPTIONS]
 
 This is the experiment runner for runexp. runexp is a system designed to launch
 experiments in several experiment servers sockets for communication.
