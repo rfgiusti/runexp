@@ -8,11 +8,16 @@ our @EXPORT = qw(donejob runjob getjobname setaftermath saveaftermaths loadafter
 
 use threads::shared;
 
+use threads::shared;
+
 use rxplib::logging qw(verbose printfail printmsg);
 
 # This is a list of jobs outcomes (1 indicates the job was completed successfully, 0 indicates the job was finished
 # with a failure status. This list is only used by the manager.
 my %aftermaths :shared;
+
+# This flag is raised to 1 if the MATLAB stack tracer has been written to /tmp/runexpstacktracer
+my $hastracer :shared = 0;
 
 # Return the job short name and the job long name
 sub getjobname {
@@ -159,6 +164,7 @@ sub runjob {
 
 
 # Actually run a job and log its output
+# FIXME: replace job spawning system with proper functions instead of backticks 
 sub runandlog {
 	my $hostname = shift;
 	my $longname = shift;
@@ -198,12 +204,46 @@ sub runmatlab {
 	my $jobname = shift;
 	my $job = shift;
 
+	# Create a function in /tmp/runexpstacktracer only once
+	{
+		lock $hastracer;
+		unless ($hastracer) {
+			mkdir '/tmp/runexpstacktracer' unless -d '/tmp/runexpstacktracer';
+			open FILE, ">/tmp/runexpstacktracer/runexpstacktracer.m" or last;
+			print FILE "function runexpstacktracer(e)\n";
+			print FILE "fprintf('Stack trace available (most recent calls last):\\n');\n";
+			print FILE "for i = numel(e.stack):-1:1\n";
+			print FILE "  fprintf('Function ''%s'' at file ''%s'', line %d\\n', ...\n";
+			print FILE "      e.stack(i).name, e.stack(i).file, e.stack(i).line);\n";
+			print FILE "end;\n";
+			close FILE;
+			$hastracer = 1;
+		}
+	}
+
+	# Prepare a MATLAB wrapper to call the job
 	$job =~ s/\.m$//;
 	$job =~ s{^/tmp/runexp/}{};
+	my $matlabcmd ="try; addpath('/tmp/runexp'); $job; catch e, fprintf('Failed: %s\\n', e.message); addpath('/tmp/runexpstacktracer'); runexpstacktracer(e); end";
+	my $matlabcall = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"$matlabcmd; quit;\"";
 
-	my $matlabcmd ="try; addpath('/tmp/runexp'); $job; catch e, fprintf('Failed: %s\\n', e.message); end";
-	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"$matlabcmd; quit;\" 2>&1";
-	return runandlog($host, $jobname, $cmdline);
+	# Make a proxy bash file to call the MATLAB wrapper
+	my $proxyjob = `mktemp /tmp/runexp/matlabproxy_XXXXXXXXXX.sh`;
+	open FILE, ">$proxyjob" or return ("failure", "Error creating MATLAB proxy job $proxyjob: $!");
+	print FILE "#!/bin/bash\n";
+	print FILE "output=\$(mktemp /tmp/runexp/output_XXXXXXXXXXXX.txt)\n";
+	print FILE "$matlabcall \&> \$output\n";
+	print FILE "cat \$output\n";
+	print FILE "rm \$output\n";
+	close FILE;
+	
+	# Run the proxy job
+	my $cmdline = "bash $proxyjob";
+	my ($runoutcome, $runoutput) = runandlog($host, $jobname, $cmdline);
+
+	# Unlink the proxy job and return the execution data
+	unlink $proxyjob;
+	return ($runoutcome, $runoutput);
 }
 
 

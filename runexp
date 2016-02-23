@@ -7,7 +7,7 @@ use File::Path qw(make_path);
 use IO::Socket::INET;
 use threads;
 use threads::shared;
-use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case bundling auto_help);
 use File::Basename qw(dirname);
 
 my $__scriptdir;
@@ -34,7 +34,7 @@ GetOptions(
 	'connect|c=s'	=> \$qmanager,
 	'host|h=s'	=> \$hostname,
 	'verbose|v'	=> sub { setverbose(1); },
-);
+) or die "Execution terminated.\n";
 
 # One bare options for the number of jobs is required
 $maxjobs = shift @ARGV;
@@ -248,35 +248,24 @@ experiment runner
 
 =head1 SYNOPSIS
 	
-  runex <MAXJOBS> [<BASEDIR>] [OPTIONS]
+runexp <MAXJOBS> [<BASEDIR>] [OPTIONS]
 
 This is the experiment runner for runexp. runexp is a system designed to launch
-experiments in several experiment servers using a distributed file system as
-communication medium.
+experiments in several experiment servers sockets for communication.
+
+Mandatory:
+
+  <MAXJOBS>  Mandatory argument that specifies how many experiments should be
+	       simultaneously in execution at a time. 
 
 Options:
 
-	<MAXJOBS>  Mandatory argument that specifies how many experiments should
-	           be simultaneously in execution at a time. This argument must
-		   be specified before <BASEDIR>, if <BASEDIR> is specified.
-	<BASEDIR>  Specify where runexp should look for the jobs and  outputs
-		   directory. If ommitted, the current working directory is
-		   used. This does not change the current working directory.
-	-c, --connect <SERVER>:<PORT>
-		   Specify that the queue manager is located on host <SERVER>
-		   at port <PORT> (e.g.: localhost:5432)
-	-r, --run <RUNPATH>
-		   Specify the directory where jobs should be looked for. Each
-		   job either a .m or a .sh file. The default value for this
-		   option is <BASEDIR>/runs.
-	-o, --output <OUTPUTPATH>
-		   Specify the directory where the job outputs will be written.
-		   When executed, the standard output and the standard error
-		   output will be redicted to a file in this directory. The
-		   default value for this option is <BASEDIR>/outputs.
-	-h, --host <NAME>
-		   Use <NAME> as hostname instead of system name.
-	-v         Print detailed information.
+  -c, --connect <SERVER>:<PORT>
+  	     Specify that the queue manager is located on host <SERVER> at port
+	       <PORT> (e.g.: localhost:5432)
+  -h, --host <NAME>
+  	     Use <NAME> as hostname instead of system name.
+  -v         Print detailed information.
 
 runexp is hosted at GitHub. For source code and more information on how to use
 runexp, please visit github.com/rfgiusti/runexp
