@@ -444,37 +444,33 @@ queueexp - queue experiments for distributed execution
 queueexp [<BASEDIR>] [OPTIONS]
 
 This is the queue management for runexp. runexp is a system designed to launch
-experiments in several experiment servers using a distributed file system as
-communication medium.
+experiments in several experiment servers using sockets for communication.
 
 Options:
 
-	<BASEDIR>	Specify where runexp should look for the jobs and
-			outputs directory. If ommitted, the current working
-			directory is used. This does not change the current
-			working directory.
-	-r,--run <RUNPATH>
-			Specify the directory where jobs should be looked for.
-			Each job is either a .m or a .sh file. The default value
-			for this option is <BASEDIR>/runs.
-	-o,--output <OUTPUTPATH>
-			Specify the directory where the job outputs will be
-			written. When executed, the standard output and the
-			standard error output will be redicted to a file in this
-			directory. The default value for this option is
-			<BASEDIR>/outputs.
-	--random	Run jobs in random order instead of lexicographical
-			order.
-	--print-jobs	Print remaining jobs and quit.
-	-t,--progress	Track job progress in a single output line instead of
-			outputing a new line every time a job is spawned.
-			Implies -q.
-	-q,--quiet	Do not print job names. Can't be used with -v.
-	-a,--aftermath	Print a message of success/failure when jobs finish.
-	-s,--success	Print a message when a job is executed successfully.
-	-f,--failure	Print a message when a job finishes with failure.
-	-v		Print detailed information.
-	-p <PORT>	Listen on port <PORT>
+  <BASEDIR>	Specify where runexp should look for the jobs and outputs
+		  directory. If ommitted, the current working directory is used.
+		  This does not change the current working directory.
+  -r,--run <RUNPATH>
+  		Specify the directory where jobs should be looked for.  Each job
+		  is either a .m or a .sh file. The default value for this
+		  option is <BASEDIR>/runs.
+  -o,--output <OUTPUTPATH>
+  		Specify the directory where the job outputs will be written.
+		  When executed, the standard output and the standard error
+		  output will be redicted to a file in this directory. The
+		  default value for this option is <BASEDIR>/outputs.
+  --random	Run jobs in random order instead of lexicographical order.
+  --print-jobs	Print remaining jobs and quit.
+  -t,--progress	Track job progress in a single output line instead of outputing
+		  a new line every time a job is spawned. Implies -q.
+  -q,--quiet	Do not print job names. Can't be used with -v.
+  -a,--aftermath
+		Print a message of success/failure when jobs finish.
+  -s,--success	Print a message when a job is executed successfully.
+  -f,--failure	Print a message when a job finishes with failure.
+  -v		Print detailed information.
+  -p <PORT>	Listen on port <PORT>
 
 runexp is hosted at GitHub. For source code and more information on how to use
 runexp, please visit github.com/rfgiusti/runexp
