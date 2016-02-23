@@ -4,7 +4,7 @@ use strict;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(verbose setverbose printfail printprogress setprintprogress printmsg setquiet setaftermath
+our @EXPORT = qw(verbose setverbose printfail printprogress setprintprogress printmsg setquiet setprintaftermath
 	printaftermath);
 
 use threads::shared;
@@ -65,7 +65,7 @@ sub setprintprogress {
 
 
 # Set printaftermath flag on/off
-sub setaftermath {
+sub setprintaftermath {
 	my $mode = shift;
 
 	die "aftermath mode '$mode' is invalid\n" unless $mode =~ /^(all|none|success|failure)$/;

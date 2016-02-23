@@ -4,12 +4,14 @@ use strict;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(donejob runjob getjobname);
+our @EXPORT = qw(donejob runjob getjobname setaftermath saveaftermaths loadaftermaths);
 
 use threads::shared;
 
 use rxplib::logging qw(verbose printfail printmsg);
 
+# This is a list of jobs outcomes (1 indicates the job was completed successfully, 0 indicates the job was finished
+# with a failure status. This list is only used by the manager.
 my %aftermaths :shared;
 
 # Return the job short name and the job long name
@@ -32,24 +34,36 @@ sub getjobname {
 sub loadaftermaths {
 	my $file = shift;
 
-	lock %aftermath;
-	open FILE, "<$file" or die "Error loading aftermath table: $!\n";
+	lock %aftermaths;
+	open FILE, "<$file" or die "Error loading aftermath table at $file: $!\n";
 	my @filedata = <FILE>;
 	close FILE;
-	%aftermath = map { my $s = $_; chomp $s; $x } @filedata;
-	verbose "Loaded aftermath results for " . scalar (keys %aftermath ) . " experiment(s)";
+	%aftermaths = map { my $s = $_; chomp $s; $s } @filedata;
+	verbose "Loaded aftermath results for " . scalar (keys %aftermaths) . " job(s)";
 }
 
 
 # Write aftermath table to a file
-sub saveaftermath {
+sub saveaftermaths {
 	my $file = shift;
 
-	lock %aftermath;
-	my @aftermath = %aftermath;
-	open FILE, ">$file" or die "Error opening aftermath table file: $!\n";
-	print FILE join("\n", @aftermath);
+	lock %aftermaths;
+	my @aftermaths = %aftermaths;
+	open FILE, ">$file" or die "Error saving aftermath table to '$file': $!\n";
+	print FILE join("\n", @aftermaths);
 	close FILE;
+	verbose "Saved aftermath results for " . scalar (keys %aftermaths) . " job(s)";
+}
+
+
+# Set aftermath status after a job has been executed
+sub setaftermath {
+	my $job = shift;
+	my $aftermath = shift;
+
+	lock %aftermaths;
+	$aftermaths{$job} = $aftermath;
+	verbose "Set aftermath of job '$job' to '$aftermath'";
 }
 
 
@@ -71,11 +85,13 @@ sub donejob {
 	$resfile =~ s{\.[^.]*$}{.res};
 	verbose "Searching output file '$resfile'";
 
-	{	
-		lock %aftermath;
-		return $aftermath{$
-	}
 	return 0 unless -f $resfile;
+	{	
+		lock %aftermaths;
+		my $jobname = getjobname($jobfile, $runpath);
+		verbose "Checking job '$jobname' on aftermaths table";
+		return $aftermaths{$jobname} if defined $aftermaths{$jobname};
+	}
 
 	open OUTFILE, "<$resfile";
 
