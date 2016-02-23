@@ -90,7 +90,10 @@ sub donejob {
 	$resfile =~ s{\.[^.]*$}{.res};
 	verbose "Searching output file '$resfile'";
 
+	# If no output exists, then the job is undone
 	return 0 unless -f $resfile;
+
+	# Otherwise, check if it is listed in the aftermath table
 	{	
 		lock %aftermaths;
 		my $jobname = getjobname($jobfile, $runpath);
@@ -98,6 +101,8 @@ sub donejob {
 		return $aftermaths{$jobname} if defined $aftermaths{$jobname};
 	}
 
+	# If all fails, read the output log, starting with the runexp summary, and then proceeding to scan
+	# the entire output for the RES: string
 	open OUTFILE, "<$resfile";
 
 	# See if the first line has a runexp summary
@@ -136,10 +141,13 @@ sub runjob {
 	my $jobtype = shift;
 	my $jobdata = shift;
 
+	# Failure message in case writing to file failes
+
 	# Write the job data into a temporary file
 	my $jobfile = `mktemp /tmp/runexp/runexp_XXXXXXXXXX$jobtype`;
 	chomp $jobfile;
-	open FILE, ">$jobfile" or return ("failure", "Run error: $!");
+	open FILE, ">$jobfile" or return ("failure", "Host $host was unable to write job file for $job\n" .
+			"Attempt to open temporary file '$jobfile' failed: $!\n");
 	print FILE $jobdata;
 	close FILE;
 
@@ -153,8 +161,8 @@ sub runjob {
 	}
 	else {
 		printfail("Invalid job type '$jobtype'");
-		$outcome = "failed";
-		$output = "runexp: Invalid job type '$jobtype'";
+		$outcome = "failure";
+		$output = "runexp: Invalid job type '$jobtype' for job '$job'";
 	}
 
 	unlink $jobfile;
