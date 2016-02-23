@@ -150,7 +150,7 @@ sub runmatlab {
 	# Prepare a MATLAB wrapper to call the job
 	$job =~ s/\.m$//;
 	$job =~ s{^/tmp/runexp/}{};
-	my $matlabcmd ="try; addpath('/tmp/runexp'); $job; catch e, fprintf('Failed: %s\\n', e.message); end";
+	my $matlabcmd ="try; addpath('/tmp/runexp'); $job; catch e, fprintf('Failed: %s\\n', e.message); disp(e.stack); end";
 	my $matlabcall = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"$matlabcmd; quit;\"";
 
 	# Make a proxy bash file to call the MATLAB wrapper
