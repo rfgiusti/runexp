@@ -107,6 +107,7 @@ sub runjob {
 
 
 # Actually run a job and log its output
+# FIXME: replace job spawning system with proper functions instead of backticks 
 sub runandlog {
 	my $hostname = shift;
 	my $longname = shift;
@@ -146,12 +147,29 @@ sub runmatlab {
 	my $jobname = shift;
 	my $job = shift;
 
+	# Prepare a MATLAB wrapper to call the job
 	$job =~ s/\.m$//;
 	$job =~ s{^/tmp/runexp/}{};
-
 	my $matlabcmd ="try; addpath('/tmp/runexp'); $job; catch e, fprintf('Failed: %s\\n', e.message); end";
-	my $cmdline = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"$matlabcmd; quit;\" 2>&1";
-	return runandlog($host, $jobname, $cmdline);
+	my $matlabcall = "matlab -singleCompThread -nodisplay -nodesktop -nosplash -r \"$matlabcmd; quit;\"";
+
+	# Make a proxy bash file to call the MATLAB wrapper
+	my $proxyjob = `mktemp /tmp/runexp/matlabproxy_XXXXXXXXXX.sh`;
+	open FILE, ">$proxyjob" or return ("failure", "Error creating MATLAB proxy job $proxyjob: $!");
+	print FILE "#!/bin/bash\n";
+	print FILE "output=\$(mktemp /tmp/runexp/output_XXXXXXXXXXXX.txt)\n";
+	print FILE "$matlabcall \&> \$output\n";
+	print FILE "cat \$output\n";
+	print FILE "rm \$output\n";
+	close FILE;
+	
+	# Run the proxy job
+	my $cmdline = "bash $proxyjob";
+	my ($runoutcome, $runoutput) = runandlog($host, $jobname, $cmdline);
+
+	# Unlink the proxy job and return the execution data
+	unlink $proxyjob;
+	return ($runoutcome, $runoutput);
 }
 
 
