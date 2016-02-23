@@ -132,7 +132,7 @@ sub printmsg {
         my $time = `date "+%b %d %T"`;
         chomp $time;
 
-	printf "$time [$host] Running $msg\n" unless $quiet;
+	printf "$time [$host] $msg\n" unless $quiet;
 }
 
 
