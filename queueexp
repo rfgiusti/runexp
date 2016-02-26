@@ -96,7 +96,6 @@ for my $subdir (@tree) {
 			die "Attempt to create directory and parent directories $outputdir failed:\n" .
 				join("\n", @$errors) . "\n";
 		}
-		print "Created output directory (and possibly parent directories) $outputdir\n";
 	}
 	push @jobs, getfiles($subdir, 'm|sh');
 }
