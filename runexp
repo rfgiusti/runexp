@@ -21,7 +21,10 @@ use rxplib::net qw(recvlong);
 $| = 1;
 
 # Protocol version
-my $PROTOCOL_VERSION = 1.1;
+my $PROTOCOL_VERSION = "1.2";
+
+# The name of the default working group
+my $DEFAULT_GROUPNAME = '__defaulte__';
 
 # Check arguments and set default paths
 my $maxjobs = undef;
@@ -29,11 +32,13 @@ my $qmanager = undef;
 my $serveraddress = undef;
 my $serverport = undef;
 my $hostname = undef;
+my $groupname = $DEFAULT_GROUPNAME;
 
 GetOptions(
 	'connect|c=s'	=> \$qmanager,
 	'host|h=s'	=> \$hostname,
 	'verbose|v'	=> sub { setverbose(1); },
+	'group|g=s'     => \$groupname,
 ) or die "Execution terminated.\n";
 
 # One bare options for the number of jobs is required
@@ -217,19 +222,38 @@ sub askforjob {
 sub hail_server {
 	my $serversocket = shift;
 
+	# Identify myself to the manager
 	verbose "Sending server the 'SALUTON' hail";
 	$serversocket->send("SALUTON; MI $hostname");
 
+	# Check protocol version
 	verbose "Waiting for protocol version";
 	my $msg;
 	$serversocket->recv($msg, 1024);
 	verbose "Received version string '$msg'";
 	die "Bad protocol version: '$msg'\n" unless $msg =~ /^VERSIO \d+(.\d+)?$/;
 	$msg =~ s/^VERSIO //;
-	die "Bad protocol version: '$msg'\n" unless $msg eq "1.1";
-
+	die "Bad protocol version: '$msg'\n" unless $msg eq $PROTOCOL_VERSION;
 	verbose "Version accepted. Sending server acknowledgement message";
 	$serversocket->send("KOMPRENAS");
+
+	# Check if a group name is needed
+	$serversocket->recv($msg, 1024);
+	verbose "Received group message: '$msg'";
+	die "Bad group message: '$msg'\n" unless $msg =~ /^ALIGI ([^\s]+)$/;
+	my $managergroup = $1;
+	my $mygroup = ($groupname eq $DEFAULT_GROUPNAME ? "default working group" : "working group '$groupname'");
+	if ($groupname ne $managergroup) {
+		my $theirgroup = ($managergroup eq $DEFAULT_GROUPNAME ? "default working group" : "working group '$managergroup'");
+		die "I'm trying to join the $mygroup, but the queue manager is running\n" .
+			"on the $theirgroup.\n" .
+			"This might be the wrong connection. Please verify your connection settings or\n" .
+			"specify a different group.\n";
+	}
+
+	# Join the group
+	print "Joining the queue manager on the $mygroup\n";
+	$serversocket->send("JES");
 }
 
 
@@ -263,6 +287,11 @@ Options:
   -c, --connect <SERVER>:<PORT>
   	     Specify that the queue manager is located on host <SERVER> at port
 	       <PORT> (e.g.: localhost:5432)
+  -g, --group <GROUPNAME>
+	     Join a working groupwith name <GROUPNAME>. If the manager is not
+	       running on the specified group, or if the manager is running a
+	       group and none was specified in the command line, then the
+	       connection is terminated.
   -h, --host <NAME>
   	     Use <NAME> as hostname instead of system name.
   -v         Print detailed information.

@@ -25,7 +25,10 @@ use rxplib::net qw(recvlong);
 $| = 1;
 
 # Communication protocol version
-my $PROTOCOL_VERSION = "1.1";
+my $PROTOCOL_VERSION = "1.2";
+
+# The name of the default working group
+my $DEFAULT_GROUPNAME = '__defaulte__';
 
 # Check arguments and set default paths
 my $runsubpath = 'runs';
@@ -35,6 +38,7 @@ my $randomize = 0;
 my $basedir = undef;
 my $stopparsing = 0;
 my $port = undef;
+my $groupname = $DEFAULT_GROUPNAME;
 
 GetOptions(
 	'runs|r=s'	=> \$runsubpath,
@@ -48,6 +52,7 @@ GetOptions(
 	'progress|t'	=> sub { setprintprogress(1); },
 	'port|p=n'	=> \$port,
 	'verbose|v'	=> sub { setverbose(1); },
+	'group|g=s'	=> \$groupname,
 ) or die "Executiong terminated.\n";
 
 # Only one bare argument is accepted: the base dir
@@ -139,6 +144,9 @@ if ($printjobs) {
 	print join("\n", @jobs) . "\n";
 	exit 0;
 }
+
+# Are we on a working group?
+print "Starting working group '$groupname'. Use -g '$groupname' with clients to join this group\n" if $groupname ne $DEFAULT_GROUPNAME;
 
 verbose "Opening server at port $port";
 my $serversocket = IO::Socket::INET->new(
@@ -282,6 +290,15 @@ sub client_hail {
 	verbose "Client $name: waiting 'KOMPRENAS'";
 	$socket->recv($msg, 1024);
 	return undef unless $msg eq "KOMPRENAS";
+
+	# Tell the client about our group name
+	verbose "Client $name: sending group name '$groupname'";
+	$socket->send("ALIGI $groupname");
+
+	# Wait for client to acknowledge
+	verbose "Client $name: waiting 'JES'";
+	$socket->recv($msg, 1024);
+	return undef unless $msg eq "JES";
 
 	return $name;
 }
@@ -488,6 +505,12 @@ Options:
 		  When executed, the standard output and the standard error
 		  output will be redicted to a file in this directory. The
 		  default value for this option is <BASEDIR>/outputs.
+  -g,--group <GROUPNAME>
+		Use <GROUPNAME> as a string to identify a working group. If the
+		  manager specifies a working group, the clients must identify
+		  themselves in the working group as well. This is useful when
+		  different experiment sets are being executed and confusion
+		  should be avoided.
   --random	Run jobs in random order instead of lexicographical order.
   --print-jobs	Print remaining jobs and quit.
   -t,--progress	Track job progress in a single output line instead of outputing
