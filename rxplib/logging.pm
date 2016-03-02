@@ -98,7 +98,7 @@ sub printprogress {
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	my $pct = 100 * ($done / $total);
+	my $pct = int(1000 * ($done / $total)) / 10;
 	if ($printprogress) {
 		printf "[%5.1f%%] $done/$total\r", $pct;
 	}
