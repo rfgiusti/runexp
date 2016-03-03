@@ -13,7 +13,7 @@ use threads::shared;
 my $verbose :shared = 0;
 my $quiet :shared = 0;
 my $aftermath :shared = "none";
-my $printprogress :shared = 1;
+my $printprogress :shared = 0;
 sub verbose {
 	return 1 unless $verbose;
 
