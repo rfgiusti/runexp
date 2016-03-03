@@ -2,7 +2,7 @@ Communication between manager and runners via sockets
 -----------------------------------------------------
 
 
-This drafts the communication protocol version 1.1
+This drafts the communication protocol version 1.2
 
 
 SERVER-SIDE
@@ -23,8 +23,10 @@ State 1: Accept
 	   Proceed to use <HOSTNAME> as this client's identifier
 	3. If a different message is received, terminate the connection
 	4. Write "VERSIO <PROTOCOL VERSION>" on the client socket
-	5. Wait for client acknowledge with the message "KOMPRENAS"
-	6. Start processing this client on state 2, continue expecting other
+	5. Wait for client to acknowledge with the message "KOMPRENAS"
+	6. Reply with the message "ALIGI <GROUP NAME>"
+	7. Wait for client to acknowledge with the message "JES"
+	8. Start processing this client on state 2, continue expecting other
 	   clients on state 1
 
 Stete 2: Wait
@@ -92,7 +94,11 @@ State 1: Initialization
 	   number is acceptable, go to state 5. Otherwise, kill the connection
 	   and terminate the execution
 	5. Send the message "KOMPRENAS"
-	6. Start all workers on state 2
+	6. Wait for the server to send the group name in the form of the message
+	   "ALIGI <GROUP NAME>"
+	7. If the group name is valid, send the message "JES". Otherwise
+	   terminate the connection
+	9. Start all workers on state 2
 
 State 2: WorkerLoop
 
