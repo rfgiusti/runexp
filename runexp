@@ -46,8 +46,7 @@ $maxjobs = shift @ARGV;
 die "Extra arguments: " . join(' ', @ARGV) . "\n" if @ARGV;
 
 if (defined $qmanager) {
-	die "Invalid connection info '$qmanager'\n" unless $qmanager =~ /^[^:]+(:\d+)?$/;
-	$qmanager =~ /^([^:]+)(:\d+)?$/;
+	die "Invalid connection info '$qmanager'\n" unless $qmanager =~ /^([^:]*)(:\d*)?$/;
 	$serveraddress = $1; 
 	$serverport = $2 if defined $2; 
 	$serverport =~ s/^:// if defined $serverport;
@@ -59,11 +58,11 @@ die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjo
 # Read configurations from file
 my %conf = readconfig();
 for my $key (keys %conf) {
-	if ($key eq "port" && !defined $serverport) {
+	if ($key eq "port" && (!defined $serverport || $serverport eq "")) {
 		$serverport = $conf{$key};
 		print "Using port $serverport as specified from config file\n";
 	}
-	elsif ($key eq "qmanager" && !defined $serveraddress) {
+	elsif ($key eq "qmanager" && (!defined $serveraddress || $serveraddress eq "")) {
 		$serveraddress = $conf{$key};
 		print "Using server address $serveraddress as specified from config file\n";
 	}
