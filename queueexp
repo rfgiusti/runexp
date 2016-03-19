@@ -34,17 +34,17 @@ my $DEFAULT_GROUPNAME = '__defaulte__';
 my $runsubpath = 'runs';
 my $outsubpath = 'outputs';
 my $printjobs = 0;
-my $randomize = 0;
+my $sortjobs = 0;
 my $basedir = undef;
-my $stopparsing = 0;
 my $port = undef;
 my $groupname = $DEFAULT_GROUPNAME;
 
 GetOptions(
 	'runs|r=s'	=> \$runsubpath,
 	'outputs|o=s'	=> \$outsubpath,
-	'print-jobs'	=> \$printjobs,
-	'random'	=> \$randomize,
+	'print|print-jobs'	=> \$printjobs,
+	'random'        => sub { return; }, #option --random is now default
+	'sort|sort-jobs'	=> \$sortjobs,
 	'quiet|q'	=> sub { setquiet(1); },
 	'aftermath|a'	=> sub { setprintaftermath('all'); },
 	'success|s'	=> sub { setprintaftermath('success'); },
@@ -131,13 +131,12 @@ else {
 	print "I did not do anything yet.\n";
 }
 
-# Job list may or may not be sorted. Do not assume anything. Unless option --randomize is supplied,
-# then the list should be sorted.
-if ($randomize) {
-	randomizejobs(\@jobs) if $randomize;
+# Job list is randomized by default, unless the option --sort-jobs is used
+if ($sortjobs) {
+	@jobs = sort { $a cmp $b } @jobs;
 }
 else {
-	@jobs = sort { $a cmp $b } @jobs;
+	randomizejobs(\@jobs);
 }
 
 if ($printjobs) {
@@ -511,8 +510,11 @@ Options:
 		  themselves in the working group as well. This is useful when
 		  different experiment sets are being executed and confusion
 		  should be avoided.
-  --random	Run jobs in random order instead of lexicographical order.
-  --print-jobs	Print remaining jobs and quit.
+  --sort, --sort-jobs
+		Run jobs in lexicographical order. 
+  --random	Run jobs in random order (default).
+  --print,--print-jobs
+		Print remaining jobs and quit.
   -t,--progress	Track job progress in a single output line instead of outputing
 		  a new line every time a job is spawned. Implies -q.
   -q,--quiet	Do not print job names. Can't be used with -v.
