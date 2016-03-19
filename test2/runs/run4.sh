@@ -1,2 +1,2 @@
-sleep 12
+sleep 5
 echo RES:done
