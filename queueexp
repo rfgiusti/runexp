@@ -38,6 +38,9 @@ my $sortjobs = 0;
 my $basedir = undef;
 my $port = undef;
 my $groupname = $DEFAULT_GROUPNAME;
+my $printprogress = undef;
+my $printaftermath = undef;
+my $quiet = 0;
 
 GetOptions(
 	'runs|r=s'	=> \$runsubpath,
@@ -45,11 +48,12 @@ GetOptions(
 	'print|print-jobs'	=> \$printjobs,
 	'random'        => sub { return; }, #option --random is now default
 	'sort|sort-jobs'	=> \$sortjobs,
-	'quiet|q'	=> sub { setquiet(1); },
-	'aftermath|a'	=> sub { setprintaftermath('all'); },
-	'success|s'	=> sub { setprintaftermath('success'); },
-	'failure|f'	=> sub { setprintaftermath('failure'); },
-	'progress|t'	=> sub { setprintprogress(1); },
+	'quiet|q'	=> sub { $quiet = 1; },
+	'aftermath|a'	=> sub { $printaftermath = 'all'; },
+	'success|s'	=> sub { $printaftermath = 'success'; },
+	'failure|f'	=> sub { $printaftermath = 'failure'; },
+	'progress|t'	=> sub { $printprogress = 1; },
+	'shownames'	=> sub { $printprogress = 0; },
 	'port|p=n'	=> \$port,
 	'verbose|v'	=> sub { setverbose(1); },
 	'group|g=s'	=> \$groupname,
@@ -58,6 +62,19 @@ GetOptions(
 # Only one bare argument is accepted: the base dir
 $basedir = shift @ARGV;
 die "Extra arguments: " . join(' ', @ARGV) . "\n" if @ARGV;
+
+# Unless --shownames is supplied, options -t and -f are default; but still in that case the -f may
+# be overriden by options -a and -s
+setquiet(1) if $quiet;
+if (defined $printprogress) {
+	setprintprogress($printprogress);
+	setprintaftermath($printaftermath) if defined $printaftermath;
+}
+elsif (!$quiet) {
+	setprintprogress(1);
+	$printaftermath = 'failure' unless defined $printaftermath;
+	setprintaftermath($printaftermath);
+}
 
 my $path;
 if (defined $basedir) {
@@ -516,12 +533,15 @@ Options:
   --print,--print-jobs
 		Print remaining jobs and quit.
   -t,--progress	Track job progress in a single output line instead of outputing
-		  a new line every time a job is spawned. Implies -q.
+		  a new line every time a job is spawned. Implies -q. This is
+		  the default option. To show job names, use --shownames.
+  --shownames	Show the names of every job that is sent to a runner.
   -q,--quiet	Do not print job names. Can't be used with -v.
   -a,--aftermath
 		Print a message of success/failure when jobs finish.
   -s,--success	Print a message when a job is executed successfully.
-  -f,--failure	Print a message when a job finishes with failure.
+  -f,--failure	Print a message when a job finishes with failure. This is the
+		  default, unless --shownames is supplied.
   -v		Print detailed information.
   -p <PORT>	Listen on port <PORT>
 
