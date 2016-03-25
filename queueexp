@@ -19,13 +19,13 @@ use lib $__scriptdir;
 use rxplib::config qw(readconfig);
 use rxplib::jobs qw(donejob getjobname loadaftermaths saveaftermaths setaftermath);
 use rxplib::logging qw(verbose setverbose printprogress setquiet printfail setprintaftermath printaftermath
-	setprintprogress printmisbehavior);
+	setprintprogress printbanned printonhold);
 use rxplib::net qw(recvlong);
 
 $| = 1;
 
 # Communication protocol version
-my $PROTOCOL_VERSION = "1.2";
+my $PROTOCOL_VERSION = "1.3";
 
 # The name of the default working group
 my $DEFAULT_GROUPNAME = '__defaulte__';
@@ -416,30 +416,61 @@ sub client_processresult {
 }
 
 
-# Is the client misbehaving? If he has ran 10 jobs and his success rate is less than 60%,
-# then send him home. Or if he failed the last 80% jobs, also send him home
-sub client_misbehaving {
+# Evaluate the client and see if it should be allowed to continue running experiments
+sub evaluate_client {
+	my $name = shift;
 	my $last_job = shift;
 	my $total_success = shift;
 	my $total_failures = shift;
 	my $last_ten = shift;
+	my $running = shift;
+	my $onhold = shift;
+	my $banned = shift;
 
+	# If the client is banned, then just don't care anymore
+	return if $$banned;
+
+	# Otherwise, let's review his last 10 jobs
 	$$total_success++ if $last_job eq "success";
 	$$total_failures++ if $last_job eq "failure";
 	push @$last_ten, ($last_job eq "success" ? 1 : 0);
 
+	# If the client has not run even 10 jobs, then he's cool; otherwise, trim his
+	# recent list to ensure he has ten jobs
 	return 0 if scalar(@$last_ten) < 10;
 	shift @$last_ten if scalar(@$last_ten) > 10;
 
-	return 1 if $$total_success / ($$total_success + $$total_failures) < 0.6;
+	# His global success rate should never drop below 60%; if it does, he's banned
+	my $rate = $$total_success / ($$total_success + $$total_failures);
+	if ($rate < 0.6) {
+		printbanned($name, $$onhold, $rate);
+		$$banned = 1;
+		return;
+	}
 
+	# Now let us see; if the client was put on hold and he still has previously
+	# assigned jobs to run, let him finish and let's see what he can do
+	return if $$onhold && $running > 0;
+
+	# Otherwise, let's see his last 10 jobs. Did he finish 80% of it? If yes, then
+	# let him continue; otherwise, put him on hold if he's been acting alright or
+	# ban him if he was already on hold
 	my $last_failures = 0;
 	for my $i (@$last_ten) {
 		$last_failures += 1 - $i;
-		return 1 if $last_failures >= 2;
 	}
-
-	return 0;
+	if ($last_failures > 2) {
+		if ($$onhold) {
+			printbanned($name, $$onhold, $last_failures);
+		}
+		else {
+			$$onhold = 1;
+			printonhold($name, $last_failures);
+		}
+	}
+	else {
+		$$onhold = 0;
+	}
 }
 
 
@@ -477,6 +508,9 @@ sub clientloop {
 	my $total_success = 0;
 	my $total_failures = 0;
 	my @last_ten;
+	my $onhold = 0;
+	my $banned = 0;
+	my $runningjobs = 0;
 
 	my $name = client_hail($socket, $id);
 	(endthread and return) unless defined $name;
@@ -490,14 +524,25 @@ sub clientloop {
 		(printfail($name, "Bad request"), last) unless defined $req;
 
 		if ($req eq "PETO") {
-			verbose "Client $name: requested a job";
-			my $nextjob = getnextjob();
-
-			if (defined $nextjob) {
-				client_sendjob($socket, $name, $nextjob);
+			if ($expelled) {
+				verbose "Client $name: requested a job, but client is banned";
+				client_ban($socket, $name);
+			}
+			elsif ($onhold) {
+				verbose "Client $name: requested a job, but client is currently on hold";
+				client_onhold($socket, $name);
 			}
 			else {
-				client_fino($socket, $name)
+				verbose "Client $name: requested a job";
+				my $nextjob = getnextjob();
+
+				if (defined $nextjob) {
+					client_sendjob($socket, $name, $nextjob);
+					$runningjobs++;
+				}
+				else {
+					client_fino($socket, $name)
+				}
 			}
 		}
 		elsif ($req eq "FINO ANKAU") {
@@ -509,8 +554,7 @@ sub clientloop {
 			my $res = $2;
 			my $outputsize = $3;
 			client_processresult($socket, $name, $job, $res, $outputsize);
-			(printmisbehavior($name, $total_success, $total_failures, @last_ten), last) if
-					client_misbehaving($res, \$total_success, \$total_failures, \@last_ten);
+			client_evaluate($name, $res, \$total_success, \$total_failures, \@last_ten, $runningjobs, \$onhold, \$banned);
 		}
 	}
 
