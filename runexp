@@ -14,14 +14,14 @@ my $__scriptdir;
 BEGIN { $__scriptdir = dirname(abs_path($0)); }
 use lib $__scriptdir;
 use rxplib::config qw(readconfig);
-use rxplib::logging qw(verbose setverbose printmsg);
+use rxplib::logging qw(verbose setverbose);
 use rxplib::jobs qw(runjob);
 use rxplib::net qw(recvlong);
 
 $| = 1;
 
 # Protocol version
-my $PROTOCOL_VERSION = "1.2";
+my $PROTOCOL_VERSION = "1.3";
 
 # The name of the default working group
 my $DEFAULT_GROUPNAME = '__defaulte__';
@@ -88,6 +88,10 @@ my $commbusy :shared = 0;
 # If the shared variable masterstop is set to 1, then all workers will cease requesting new jobs
 my $masterstop :shared = 0;
 
+# If the shared variale onhold is set to 1, then we have been put on hold. That means the manager
+# will be evaluating any jobs we are currently running before sending in new jobs
+my $onhold :shared = 0;
+
 # Try to connect to and hail the server
 verbose "Connecting to server at $serveraddress:$serverport";
 my $serversocket = IO::Socket::INET->new(
@@ -129,9 +133,21 @@ sub workerloop {
 	while (1) {
 		my ($job, $jobtype, $jobdata);
 		(verbose "Worker $id: finished" and return) unless askforjob($id, $serversocket, \$job, \$jobtype, \$jobdata);
-		verbose "Worker $id: got a new job -- $job";
-		($joboutcome, $joboutput) = runjob($hostname, $job, $jobtype, $jobdata);
-		sendjoboutcome($id, $serversocket, $job, $joboutcome, $joboutput);
+		if ($jobtype eq "__sleep__") {
+			# Manager just told me we misbehaved, and I should wait before I ask for more jobs. During
+			# that time, the manager will be evaluating my performance: if I fumble too much, we will
+			# be banned. If that happens, wake up and get out of here
+			my $sleep = 10;
+			while ($sleep--) {
+				return if $masterstop;
+				sleep 1;
+			}
+		}
+		else {
+			verbose "Worker $id: got a new job -- $job";
+			($joboutcome, $joboutput) = runjob($hostname, $job, $jobtype, $jobdata);
+			sendjoboutcome($id, $serversocket, $job, $joboutcome, $joboutput);
+		}
 	}
 }
 
@@ -194,10 +210,31 @@ sub askforjob {
 	$serversocket->recv($msg, 1024);
 	verbose "Worker $id: received message '$msg'";
 
-	if ($msg eq "FINO") {
+	# Process return: ATENDI because runner was put on hold until further evaluation; ELIRI because
+	# runner was banned for failing too many experiments, FINO because there are no more jobs to
+	# run, or LABORO ... with information on a new job
+	if ($msg eq "ATENDI") {
+		# Manager asked us to wait
+		printmsg $hostname, "Runner put on hold for failing experiments" unless $onhold;
+		$onhold = 1;
+		$$jobtype = "__wait__";
+		return 1;
+	}
+	elsif ($msg eq "ELIRI") {
+		# We were banned!!    :(
+		verbose "Worker $id: we were banned! :(";
+		$masterstop = 1;
+		return 0;
+	}
+	elsif ($msg eq "FINO") {
 		verbose "Worker $id: no more jobs; raising MASTERSTOP";
 		$masterstop = 1;
 		return 0;
+	}
+
+	if ($onhold) {
+		printmsg $hostname, "Manager lifted hold: new jobs coming!";
+		$onhold = 0;
 	}
 
 	$msg =~ /^LABORO (.+) (\.[^ ]+) (\d+)$/ or die "Worker $id: Unexpected message $msg";
