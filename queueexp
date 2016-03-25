@@ -19,7 +19,7 @@ use lib $__scriptdir;
 use rxplib::config qw(readconfig);
 use rxplib::jobs qw(donejob getjobname loadaftermaths saveaftermaths setaftermath);
 use rxplib::logging qw(verbose setverbose printprogress setquiet printfail setprintaftermath printaftermath
-	setprintprogress);
+	setprintprogress printmisbehavior);
 use rxplib::net qw(recvlong);
 
 $| = 1;
@@ -231,7 +231,7 @@ sub makejobqueue {
 sub getfiles {
 	my $dir = shift;
 	my $ext = shift;
-	
+
 	opendir(RUNS, $dir) or die "Can't open runs directory at $dir\n";
 	my @files = map "$dir/$_", grep(/\.($ext)$/, readdir(RUNS));
 	closedir(RUNS);
@@ -367,7 +367,7 @@ sub client_sendjob {
 
 	verbose "Client $name: sending job ($jobsize bytes)";
 	$socket->send($jobcontents);
-	
+
 	lock $ranjobs;
 	$ranjobs++;
 	printprogress($name, $ranjobs, $totaljobs, getjobname($job, $runpath));
@@ -383,7 +383,7 @@ sub client_fino {
 	verbose "Client $name: sending FINO message";
 	$socket->send('FINO');
 }
-			
+
 
 # Do what you got to do when the client finishes a job
 sub client_processresult {
@@ -413,6 +413,33 @@ sub client_processresult {
 	$socket->send("RICEVIS");
 
 	printaftermath($name, $job, $res);
+}
+
+
+# Is the client misbehaving? If he has ran 10 jobs and his success rate is less than 60%,
+# then send him home. Or if he failed the last 80% jobs, also send him home
+sub client_misbehaving {
+	my $last_job = shift;
+	my $total_success = shift;
+	my $total_failures = shift;
+	my $last_ten = shift;
+
+	$$total_success++ if $last_job eq "success";
+	$$total_failures++ if $last_job eq "failure";
+	push @$last_ten, ($last_job eq "success" ? 1 : 0);
+
+	return 0 if scalar(@$last_ten) < 10;
+	shift @$last_ten if scalar(@$last_ten) > 10;
+
+	return 1 if $$total_success / ($$total_success + $$total_failures) < 0.6;
+
+	my $last_failures = 0;
+	for my $i (@$last_ten) {
+		$last_failures += 1 - $i;
+		return 1 if $last_failures >= 2;
+	}
+
+	return 0;
 }
 
 
@@ -447,6 +474,9 @@ sub clientloop {
 	my $socket = shift;
 	my $id = shift;
 	my $name = shift;
+	my $total_success = 0;
+	my $total_failures = 0;
+	my @last_ten;
 
 	my $name = client_hail($socket, $id);
 	(endthread and return) unless defined $name;
@@ -479,6 +509,8 @@ sub clientloop {
 			my $res = $2;
 			my $outputsize = $3;
 			client_processresult($socket, $name, $job, $res, $outputsize);
+			(printmisbehavior($name, $total_success, $total_failures, @last_ten), last) if
+					client_misbehaving($res, \$total_success, \$total_failures, \@last_ten);
 		}
 	}
 
@@ -528,7 +560,7 @@ Options:
 		  different experiment sets are being executed and confusion
 		  should be avoided.
   --sort, --sort-jobs
-		Run jobs in lexicographical order. 
+		Run jobs in lexicographical order.
   --random	Run jobs in random order (default).
   --print,--print-jobs
 		Print remaining jobs and quit.

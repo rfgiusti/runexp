@@ -5,7 +5,7 @@ use strict;
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(verbose setverbose printfail printprogress setprintprogress printmsg setquiet setprintaftermath
-	printaftermath);
+	printaftermath printmisbehavior);
 
 use threads::shared;
 
@@ -133,6 +133,31 @@ sub printmsg {
         chomp $time;
 
 	printf "$time [$host] $msg\n" unless $quiet;
+}
+
+
+# Print information about a host misbehaving
+sub printmisbehavior {
+	my $host = shift;
+	my $success = shift;
+	my $failure = shift;
+	my @last_ten = @_;
+
+	my $time = `date "+%b %d %T"`;
+	chomp $time;
+
+	my $ten = 0;
+	for my $i (@last_ten) {
+		$ten += 1 - $i;
+	}
+	my $failrate = 100 * ($failure / ($success + $failure));
+
+	if ($failrate > 0.6) {
+		printf "$time [$host] Client misbehaved and will now be ignored: failed %.1f%% of all tasks\n", $failrate;
+	}
+	else {
+		print "$time [$host] Client misbehaved and will now be ignored: failed $ten out of last 10 tasks\n";
+	}
 }
 
 

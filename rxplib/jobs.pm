@@ -94,7 +94,7 @@ sub donejob {
 	return 0 unless -f $resfile;
 
 	# Otherwise, check if it is listed in the aftermath table
-	{	
+	{
 		lock %aftermaths;
 		my $jobname = getjobname($jobfile, $runpath);
 		verbose "Checking job '$jobname' on aftermaths table";
@@ -172,7 +172,7 @@ sub runjob {
 
 
 # Actually run a job and log its output
-# FIXME: replace job spawning system with proper functions instead of backticks 
+# FIXME: replace job spawning system with proper functions instead of backticks
 sub runandlog {
 	my $hostname = shift;
 	my $longname = shift;
@@ -189,7 +189,7 @@ sub runandlog {
 	my $endtime = `date`;
 	chomp $endtime;
 
-	# See if the output has the RES:done flag	
+	# See if the output has the RES:done flag
 	my $outcome = (_hasdonestring(split /\n/, $progoutput) ? "success" : "failure");
 	verbose "Finished job $longname with $outcome";
 
@@ -244,7 +244,7 @@ sub runmatlab {
 	print FILE "cat \$output\n";
 	print FILE "rm \$output\n";
 	close FILE;
-	
+
 	# Run the proxy job
 	my $cmdline = "bash $proxyjob";
 	my ($runoutcome, $runoutput) = runandlog($host, $jobname, $cmdline);

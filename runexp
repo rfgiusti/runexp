@@ -47,8 +47,8 @@ die "Extra arguments: " . join(' ', @ARGV) . "\n" if @ARGV;
 
 if (defined $qmanager) {
 	die "Invalid connection info '$qmanager'\n" unless $qmanager =~ /^([^:]*)(:\d*)?$/;
-	$serveraddress = $1; 
-	$serverport = $2 if defined $2; 
+	$serveraddress = $1;
+	$serverport = $2 if defined $2;
 	$serverport =~ s/^:// if defined $serverport;
 }
 
@@ -146,7 +146,7 @@ sub sendjoboutcome {
 
 	my $outputlen = length $output;
 	my $msg = "REZULTO $job $outcome $outputlen";
-	
+
 	verbose "Worker $id: [sendjoboutcome] trying to get lock of communications";
 	lock $commbusy;
 	verbose "Worker $id: [sendjoboutcome] I have the lock";
@@ -270,7 +270,7 @@ __END__
 experiment runner
 
 =head1 SYNOPSIS
-	
+
 runexp <MAXJOBS> [<BASEDIR>] [OPTIONS]
 
 This is the experiment runner for runexp. runexp is a system designed to launch
@@ -279,7 +279,7 @@ experiments in several experiment servers sockets for communication.
 Mandatory:
 
   <MAXJOBS>  Mandatory argument that specifies how many experiments should be
-	       simultaneously in execution at a time. 
+	       simultaneously in execution at a time.
 
 Options:
 
