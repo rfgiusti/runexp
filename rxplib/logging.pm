@@ -14,7 +14,7 @@ use threads::shared;
 # a specified power of 2 or defaults to KB)
 sub memsize2string {
 	my $bytes = shift;
-	my $maxpower = shift or 1;
+	my $maxpower = shift || 1;
 
 	my @prefixes = qw(N K M G T P E Z Y);
 	while ($maxpower > 1 && $bytes < 1024 ** $maxpower) {
