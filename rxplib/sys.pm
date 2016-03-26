@@ -51,7 +51,7 @@ sub getmemavail {
 	close FILE;
 
 	for my $line (@file) {
-		if ($line =~ /^MemAvailable:\s*(\d+(\.\d+)?\s*([kKmMgGtT][bB]?))\s*$/) {
+		if ($line =~ /^\s*[Mm]em\s*[Aa]vailable:?\s*(\d+(\.\d+)?\s*([kKmMgGtT][bB]?))\s*$/) {
 			return interpmemsize $1;
 		}
 	}
