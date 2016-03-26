@@ -524,7 +524,7 @@ sub clientloop {
 		(printfail($name, "Bad request"), last) unless defined $req;
 
 		if ($req eq "PETO") {
-			if ($expelled) {
+			if ($banned) {
 				verbose "Client $name: requested a job, but client is banned";
 				client_ban($socket, $name);
 			}

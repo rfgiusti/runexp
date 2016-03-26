@@ -158,7 +158,7 @@ sub printbanned {
 		printmsg $host, "Client overall rate went down to $rate, so client$extra is now BANNED";
 	}
 	else {
-		printmsg $host, "Client failed $evaluation out of last 10 jobs while under evaluation, so client is now BANNED";
+		printmsg $host, "Client failed $eval out of last 10 jobs while under evaluation, so client is now BANNED";
 	}
 }
 
