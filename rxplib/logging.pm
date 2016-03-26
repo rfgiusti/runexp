@@ -5,7 +5,7 @@ use strict;
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(verbose setverbose printfail printprogress setprintprogress printmsg setquiet setprintaftermath
-	printaftermath printmisbehavior);
+	printaftermath printonhold printbanned);
 
 use threads::shared;
 
@@ -84,7 +84,7 @@ sub printfail {
         
 	my $time = `date "+%b %d %T"`;
         chomp $time;
-        printf "$time [$id] ERROR: $failmessage\n";
+        print "$time [$id] ERROR: $failmessage\n";
 }
 
 
@@ -103,7 +103,7 @@ sub printprogress {
 		printf "[%5.1f%%] $done/$total\r", $pct;
 	}
 	else {
-		printf "$time [%5.1f%%] $host: $msg\n", $pct unless $quiet;
+		printf "$time [%5.1f%%] $host: %s\n", $pct, $msg unless $quiet;
 	}
 }
 
@@ -120,7 +120,7 @@ sub printaftermath {
 	my $time = `date "+%b %d %T"`;
 	chomp $time;
 
-	printf "$time [RESULT] $host: finished $job with $res\n";
+	print "$time [RESULT] $host: finished $job with $res\n";
 }
 
 
@@ -132,34 +132,35 @@ sub printmsg {
         my $time = `date "+%b %d %T"`;
         chomp $time;
 
-	printf "$time [$host] $msg\n" unless $quiet;
+	print "$time [$host] $msg\n" unless $quiet;
 }
 
 
-# Print information about a host misbehaving
-sub printmisbehavior {
+
+# Print information about a client being put on hold
+sub printonhold {
 	my $host = shift;
-	my $success = shift;
-	my $failure = shift;
-	my @last_ten = @_;
+	my $lastfailures = shift;
 
-	my $time = `date "+%b %d %T"`;
-	chomp $time;
+	printmsg $host, "After failing $lastfailures out of the last 10 jobs, client was put on hold";
+}
 
-	my $ten = 0;
-	for my $i (@last_ten) {
-		$ten += 1 - $i;
-	}
-	my $failrate = 100 * ($failure / ($success + $failure));
 
-	if ($failrate > 0.6) {
-		printf "$time [$host] Client misbehaved and will now be ignored: failed %.1f%% of all tasks\n", $failrate;
+# Print information about a client being banned
+sub printbanned {
+	my $host = shift;
+	my $onhold = shift;
+	my $eval = shift;
+
+	if ($eval < 1) {
+		my $rate = sprintf "%.2f%%", 100 * $eval;
+		my $extra = ($onhold ? " (which was under evaluation)" : "");
+		printmsg $host, "Client overall rate went down to $rate, so client$extra is now BANNED";
 	}
 	else {
-		print "$time [$host] Client misbehaved and will now be ignored: failed $ten out of last 10 tasks\n";
+		printmsg $host, "Client failed $evaluation out of last 10 jobs while under evaluation, so client is now BANNED";
 	}
 }
-
 
 
 return 1;
