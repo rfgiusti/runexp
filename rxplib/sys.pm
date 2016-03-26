@@ -4,7 +4,7 @@ use strict;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(interpmemsize);
+our @EXPORT = qw(interpmemsize getmemavail);
 
 use threads::shared;
 
@@ -41,6 +41,22 @@ sub interpmemsize {
 	}
 
 	return int($mem + 0.5);
+}
+
+
+# Try to gather the available system memory from /proc/meminfo
+sub getmemavail {
+	open FILE, "</proc/meminfo" or return undef;
+	my @file = <FILE>;
+	close FILE;
+
+	for my $line (@file) {
+		if ($line =~ /^MemAvailable:\s*(\d+(\.\d+)?\s*([kKmMgGtT][bB]?))\s*$/) {
+			return interpmemsize $1;
+		}
+	}
+
+	return undef;
 }
 
 
