@@ -14,9 +14,10 @@ my $__scriptdir;
 BEGIN { $__scriptdir = dirname(abs_path($0)); }
 use lib $__scriptdir;
 use rxplib::config qw(readconfig);
-use rxplib::logging qw(verbose setverbose printmsg);
+use rxplib::logging qw(verbose setverbose printmsg memsize2string);
 use rxplib::jobs qw(runjob);
 use rxplib::net qw(recvlong);
+use rxplib::sys qw(interpmemsize);
 
 $| = 1;
 
@@ -33,12 +34,14 @@ my $serveraddress = undef;
 my $serverport = undef;
 my $hostname = undef;
 my $groupname = $DEFAULT_GROUPNAME;
+my $minmemory = undef;
 
 GetOptions(
 	'connect|c=s'	=> \$qmanager,
 	'host|h=s'	=> \$hostname,
 	'verbose|v'	=> sub { setverbose(1); },
 	'group|g=s'     => \$groupname,
+	'mem|m=s'	=> \$minmemory,
 ) or die "Execution terminated.\n";
 
 # One bare options for the number of jobs is required
@@ -54,6 +57,13 @@ if (defined $qmanager) {
 
 die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
 die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
+
+if (defined $minmemory) {
+	die "Invalid argument for option --mem: $minmemory\n" unless $minmemory =~ /^\d+[kmgKMG]?/;
+	$minmemory = interpmemsize($minmemory);
+	my $showmemory = memsize2string($minmemory, 3);
+	verbose "Don't start experiments if available memory is less than $showmemory";
+}
 
 # Read configurations from file
 my %conf = readconfig();
@@ -294,6 +304,10 @@ Options:
   -h, --host <NAME>
   	     Use <NAME> as hostname instead of system name.
   -v         Print detailed information.
+  -m, --mem <VALUE>
+	     Don't start new jobs if physical memory is inferior to <VALUE>.
+		The prefixes [KMGkmg] may be used and correspond to powers of
+		two, so 1K equals 1024 bytes, 1M equals 1024M, and so on.
 
 runexp is hosted at GitHub. For source code and more information on how to use
 runexp, please visit github.com/rfgiusti/runexp

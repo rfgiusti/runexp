@@ -5,9 +5,32 @@ use strict;
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(verbose setverbose printfail printprogress setprintprogress printmsg setquiet setprintaftermath
-	printaftermath);
+	printaftermath memsize2string);
 
 use threads::shared;
+
+
+# Return a string that represents an amount of memory in human readable form (goes up to
+# a specified power of 2 or defaults to KB)
+sub memsize2string {
+	my $bytes = shift;
+	my $maxpower = shift or 1;
+
+	my @prefixes = qw(N K M G T P E Z Y);
+	while ($maxpower > 1 && $bytes < 1024 ** $maxpower) {
+		$maxpower--;
+	}
+
+	my $mem = sprintf "%.1f", $bytes / (1024 ** $maxpower);
+	if ($mem - int($mem) > 0.1) {
+		return sprintf("%.1f $prefixes[$maxpower]B", $mem);
+	}
+	else {
+		return sprintf("%d $prefixes[$maxpower]B", $mem);
+	}
+}
+
+
 
 # Print detailed information if running verbosely
 my $verbose :shared = 0;
