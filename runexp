@@ -14,9 +14,10 @@ my $__scriptdir;
 BEGIN { $__scriptdir = dirname(abs_path($0)); }
 use lib $__scriptdir;
 use rxplib::config qw(readconfig);
-use rxplib::logging qw(verbose setverbose);
+use rxplib::logging qw(verbose setverbose printmsg memsize2string);
 use rxplib::jobs qw(runjob);
 use rxplib::net qw(recvlong);
+use rxplib::sys qw(interpmemsize getmemavail);
 
 $| = 1;
 
@@ -33,12 +34,14 @@ my $serveraddress = undef;
 my $serverport = undef;
 my $hostname = undef;
 my $groupname = $DEFAULT_GROUPNAME;
+my $minmemory = undef;
 
 GetOptions(
 	'connect|c=s'	=> \$qmanager,
 	'host|h=s'	=> \$hostname,
 	'verbose|v'	=> sub { setverbose(1); },
 	'group|g=s'     => \$groupname,
+	'mem|m=s'	=> \$minmemory,
 ) or die "Execution terminated.\n";
 
 # One bare options for the number of jobs is required
@@ -54,6 +57,24 @@ if (defined $qmanager) {
 
 die "Expected number of maximum jobs for this client\n" unless defined $maxjobs;
 die "Invalid number of jobs: $maxjobs\n" unless $maxjobs =~ /^[0-9]+$/ && $maxjobs > 0;
+
+if (defined $minmemory) {
+	die "Invalid argument for option --mem: $minmemory\n" unless $minmemory =~ /^\d+[kmgKMG]?/;
+	$minmemory = interpmemsize($minmemory);
+	my $showmemory = memsize2string($minmemory, 3);
+	verbose "Don't start experiments if available memory is less than $showmemory";
+
+	# Test if we can poll /etc/meminfo
+	my $freenow = getmemavail;
+	die "Could not poll the system for the amount of free memory. Please check if the\n" .
+			"file /proc/meminfo is avilable and readable, and that it contains the string\n" .
+			"'MemAvailable'. If not, then the option --mem will not work on this system.\n" unless defined($freenow) && $freenow >= 0;
+
+	if ($freenow < $minmemory) {
+		$freenow = memsize2string($freenow, 3);
+		die "Not enough memory! Available: $freenow, requested: $showmemory.\n";
+	}
+}
 
 # Read configurations from file
 my %conf = readconfig();
@@ -80,6 +101,10 @@ die "Can't handle this hostname: '$hostname'\n" unless $hostname =~ /^[-_a-zA-Z0
 unless (-d '/tmp/runexp') {
 	mkdir '/tmp/runexp' or die "Can't create temporary directory to store jobs: $!\n";
 }
+
+# Workers will lock the flag below when checking if the system is low on memory; if it is, then
+# the worker will hold the lock until there is enough available memory
+my $lowonmemory :shared = 0;
 
 # The commbusy flag is used to indicate that a thread is trying to communicate with the server. We
 # lock this variable because otherwise we would have to lock $masterstop and $serversocket
@@ -132,6 +157,7 @@ sub workerloop {
 
 	while (1) {
 		my ($job, $jobtype, $jobdata);
+		checkformemory($id) if defined $minmemory;
 		(verbose "Worker $id: finished" and return) unless askforjob($id, $serversocket, \$job, \$jobtype, \$jobdata);
 		if ($jobtype eq "__sleep__") {
 			# Manager just told me we misbehaved, and I should wait before I ask for more jobs. During
@@ -149,6 +175,49 @@ sub workerloop {
 			sendjoboutcome($id, $serversocket, $job, $joboutcome, $joboutput);
 		}
 	}
+}
+
+
+
+# If a minimum amount of memory has been specified, does not continue unless the system can handle that
+sub checkformemory {
+	my $id = shift;
+
+	return if $masterstop;
+
+	verbose "Worker $id: [checkformemory] trying to get lock";
+	lock $lowonmemory;
+	verbose "Worker $id: [checkformemory] I have to lock";
+
+	# If a low-memory situation was detected, the worker will be blocked by the previous lock; therefore, if
+	# we reached here, then a previous low-memory state is either non-existent or finished
+	my $free = getmemavail;
+	if ($free < $minmemory) {
+		verbose "Worker $id: [checkformemory] system is low on memory";
+		my $memshow = memsize2string($free, 3);
+		printmsg $hostname, "System is low on memory ($memshow): waiting...";
+	}
+	else {
+		verbose "Worker $id: [checkformemory] relinquishing lock";
+		return;
+	}
+
+	# Loop until the sytem has enough memory to get more jobs, keeping the lock. However, if the MASTERSTOP flag is
+	# raised by another worker, then return control to the caller
+	do {
+		if ($masterstop) {
+			verbose "Worker $id: [checkformemory] interrupted by MASTERSTOP flag";
+			verbose "Worker $id: [checkformemory] relinquishing lock";
+			return;
+		}
+		sleep 1;
+	} while (getmemavail() < $minmemory);
+
+	# If we got here, that's because we were in low-memory and we are no fine. Let the user know
+	my $memshow = memsize2string(getmemavail, 3);
+	printmsg $hostname, "Available memory is sufficient again ($memshow)";
+
+	verbose "Worker $id: [checkformemory] relinquishing lock";
 }
 
 
@@ -331,6 +400,10 @@ Options:
   -h, --host <NAME>
   	     Use <NAME> as hostname instead of system name.
   -v         Print detailed information.
+  -m, --mem <VALUE>
+	     Don't start new jobs if physical memory is inferior to <VALUE>.
+		The prefixes [KMGkmg] may be used and correspond to powers of
+		two, so 1K equals 1024 bytes, 1M equals 1024M, and so on.
 
 runexp is hosted at GitHub. For source code and more information on how to use
 runexp, please visit github.com/rfgiusti/runexp
