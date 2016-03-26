@@ -417,7 +417,7 @@ sub client_processresult {
 
 
 # Evaluate the client and see if it should be allowed to continue running experiments
-sub evaluate_client {
+sub client_evaluate {
 	my $name = shift;
 	my $last_job = shift;
 	my $total_success = shift;
