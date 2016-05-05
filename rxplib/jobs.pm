@@ -165,7 +165,7 @@ sub runjob {
 		$output = "runexp: Invalid job type '$jobtype' for job '$job'";
 	}
 
-	unlink $jobfile;
+	unlink $jobfile if (defined $outcome && $outcome eq "success");
 
 	return ($outcome, $output);
 }
