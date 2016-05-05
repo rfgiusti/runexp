@@ -237,6 +237,7 @@ sub runmatlab {
 
 	# Make a proxy bash file to call the MATLAB wrapper
 	my $proxyjob = `mktemp /tmp/runexp/matlabproxy_XXXXXXXXXX.sh`;
+	chomp $proxyjob;
 	open FILE, ">$proxyjob" or return ("failure", "Error creating MATLAB proxy job $proxyjob: $!");
 	print FILE "#!/bin/bash\n";
 	print FILE "# This is a MATLAB wrapper to run the job '$jobname'\n";
@@ -251,7 +252,7 @@ sub runmatlab {
 	my ($runoutcome, $runoutput) = runandlog($host, $jobname, $cmdline);
 
 	# Unlink the proxy job and return the execution data
-	unlink $proxyjob;
+	unlink $proxyjob or warn "Error unlinking '$proxyjob': $!";
 	return ($runoutcome, $runoutput);
 }
 
