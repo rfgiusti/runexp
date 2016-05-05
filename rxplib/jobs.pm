@@ -252,7 +252,7 @@ sub runmatlab {
 	my ($runoutcome, $runoutput) = runandlog($host, $jobname, $cmdline);
 
 	# Unlink the proxy job and return the execution data
-	unlink $proxyjob or warn "Error unlinking '$proxyjob': $!";
+	unlink $proxyjob or warn "Error unlinking '$proxyjob': $!" if (defined $runoutcome && $runoutcome eq "success");
 	return ($runoutcome, $runoutput);
 }
 
