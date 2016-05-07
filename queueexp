@@ -474,6 +474,30 @@ sub client_evaluate {
 }
 
 
+# A misbehaving client has been permanently banned
+sub client_ban {
+	my $socket = shift;
+	my $name = shift;
+
+	print "*** client_ban(\$socket, '$name');\n";
+
+	$socket->send('ELIRI');
+}
+
+
+
+# A misbehaving client has been put on hold
+sub client_onhold {
+	my $socket = shift;
+	my $name = shift;
+
+	print "*** client_onhold(\$socket, '$name');\n";
+
+	$socket->send('ATENDI');
+}
+
+
+
 # Add an aftermath information to the list and dump the aftermath file if required
 sub updateaftermath {
 	my $job = shift;
