@@ -114,8 +114,11 @@ my $commbusy :shared = 0;
 my $masterstop :shared = 0;
 
 # If the shared variale onhold is set to 1, then we have been put on hold. That means the manager
-# will be evaluating any jobs we are currently running before sending in new jobs
+# will be evaluating any jobs we are currently running before sending in new jobs. When this
+# happens, the ID of the worker who received the on-hold signal is saved. Until the hold is,
+# lifted only that specific worker is allowed to communicate with the manager
 my $onhold :shared = 0;
+my $heldworker :shared = 0;
 
 # If the shared variable banned is set to 1, then this means we were banned. Instead of "done", 
 # this will cause the runner to print a sad face
@@ -168,7 +171,7 @@ sub workerloop {
 		my ($job, $jobtype, $jobdata);
 		checkformemory($id) if defined $minmemory;
 		(verbose "Worker $id: finished" and return) unless askforjob($id, $serversocket, \$job, \$jobtype, \$jobdata);
-		if ($jobtype eq "__sleep__") {
+		if ($jobtype eq "__wait__") {
 			# Manager just told me we misbehaved, and I should wait before I ask for more jobs. During
 			# that time, the manager will be evaluating my performance: if I fumble too much, we will
 			# be banned. If that happens, wake up and get out of here
@@ -281,6 +284,14 @@ sub askforjob {
 	# If another worker received a FINO message, then there are no more jobs
 	(verbose "Worker $id: MASTERSTOP raised" and return 0) if $masterstop;
 
+	# If another worker was put on hold, then this worker is not allowed to talk to the manager
+	if ($onhold && $heldworker != $id) {
+		verbose "Worker $id: [askforjob] while runner is on hold, only worker $id is allowed to talk";
+		verbose "Worker $id: [askforjob] relinquishing lock";
+		$$jobtype = "__wait__";
+		return 1;
+	}
+
 	verbose "Worker $id: sending server the message 'PETO'";
 	$serversocket->send('PETO');
 
@@ -292,21 +303,28 @@ sub askforjob {
 	# runner was banned for failing too many experiments, FINO because there are no more jobs to
 	# run, or LABORO ... with information on a new job
 	if ($msg eq "ATENDI") {
-		# Manager asked us to wait
-		printmsg $hostname, "Runner put on hold for failing experiments" unless $onhold;
+		# Manager asked us to wait. Register the ID of the worker who received that message.
+		# All communication with the manager is interrupted for all workers except me
+		unless ($onhold) {
+			printmsg $hostname, "Runner put on hold for failing experiments" unless $onhold;
+			$heldworker = $id;
+		}
 		$onhold = 1;
 		$$jobtype = "__wait__";
+		verbose "Worker $id: [askforjob] relinquishing lock";
 		return 1;
 	}
 	elsif ($msg eq "ELIRI") {
 		# We were banned!!    :(
 		verbose "Worker $id: we were banned! :(";
+		verbose "Worker $id: [askforjob] relinquishing lock";
 		$masterstop = 1;
 		$banned = 1;
 		return 0;
 	}
 	elsif ($msg eq "FINO") {
 		verbose "Worker $id: no more jobs; raising MASTERSTOP";
+		verbose "Worker $id: [askforjob] relinquishing lock";
 		$masterstop = 1;
 		return 0;
 	}

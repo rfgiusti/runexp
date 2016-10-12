@@ -30,12 +30,12 @@ State 1: Accept
 	8. Start processing this client on state 2, continue expecting other
 	   clients on state 1
 
-Stete 2: Wait
+State 2: Wait
 
 	1. Wait for client to send message
 	2. If the received message is in the form "PETO", then it is a request
 	   for job. If the client is still eligible to run jobs, go to state 3,
-	   otherwise, got to state 3-2; however if the message is in the form
+	   otherwise, go to state 3-2; however if the message is in the form
 	   "REZULTO", then it is informing of a job that has been finished, go
 	   to state 4
 
@@ -63,7 +63,7 @@ State 4: ProcessJob
 
 	1. Server enters this state after receiving the message
 	   "REZULTO <JOBNAME> <STATUS> <SIZE>"; if the job <JOBNAME> has been
-	   spawned by the queue manager, got to step 2. Otherwise, drop the
+	   spawned by the queue manager, go to step 2. Otherwise, drop the
 	   client with an error message
 	2. Take note that the job <JOBNAME> was finished with status <STATUS>
 	3. Send the client the message "PRETA" indicating the the server is
