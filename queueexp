@@ -590,7 +590,7 @@ sub clientloop {
 sub getnextjob {
 	while ($jobqueue->pending()) {
 		my $candidate = $jobqueue->dequeue();
-		return $candidate unless donejob($candidate, $runpath, $outpath);
+		return $candidate;
 	}
 	return undef;
 }
