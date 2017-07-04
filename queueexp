@@ -427,20 +427,18 @@ sub client_evaluate {
 	my $onhold = shift;
 	my $banned = shift;
 
-	# If the client is banned, then just don't care anymore
+	# If the client is banned, then we're done here
 	return if $$banned;
 
-	# Otherwise, let's review his last 10 jobs
+	# If the client is not banned, then their actions will be analyzed, provided
+	# they have run a minimum of 10 jobs
 	$$total_success++ if $last_job eq "success";
 	$$total_failures++ if $last_job eq "failure";
 	push @$last_ten, ($last_job eq "success" ? 1 : 0);
 
-	# If the client has not run even 10 jobs, then he's cool; otherwise, trim his
-	# recent list to ensure he has ten jobs
+	# If the client has not run even 10 jobs, then there isn't enough information to
+	# judge them. Otherwise, their global success rate should never drop below 60%
 	return 0 if scalar(@$last_ten) < 10;
-	shift @$last_ten if scalar(@$last_ten) > 10;
-
-	# His global success rate should never drop below 60%; if it does, he's banned
 	my $rate = $$total_success / ($$total_success + $$total_failures);
 	if ($rate < 0.6) {
 		printbanned($name, $$onhold, $rate);
@@ -448,13 +446,20 @@ sub client_evaluate {
 		return;
 	}
 
-	# Now let us see; if the client was put on hold and he still has previously
-	# assigned jobs to run, let him finish and let's see what he can do
+	# From now on, the client will be judged based on whether they were previously
+	# put on hold or not. If they are currently on hold, but there are still jobs 
+	# assigned to them, then let them finish and maybe they'll behave better from
+	# now on. Do not assign anything new to them until they have proved themselves
+	# worthy again
 	return if $$onhold && $running > 0;
-
-	# Otherwise, let's see his last 10 jobs. Did he finish 80% of it? If yes, then
-	# let him continue; otherwise, put him on hold if he's been acting alright or
-	# ban him if he was already on hold
+	
+	# If the client is not running anything right now, let us check their last 10
+	# jobs. Did they finish 80% of it? If yes, then them continue. Otherwise, either
+	# (1) if they had been acting alright, put them on hold and let them finish
+	#     whatever is currently assigned to them;
+	# (2) if they were already put on hold, then there is no more hope that they
+	#     will start acting better again; so they are banned
+	shift @$last_ten if scalar(@$last_ten) > 10;
 	my $last_failures = 0;
 	for my $i (@$last_ten) {
 		$last_failures += 1 - $i;
@@ -550,10 +555,12 @@ sub clientloop {
 		if ($req eq "PETO") {
 			if ($banned) {
 				verbose "Client $name: requested a job, but client is banned";
+				print "*** Client $name: requested a job, but client is banned";
 				client_ban($socket, $name);
 			}
 			elsif ($onhold) {
 				verbose "Client $name: requested a job, but client is currently on hold";
+				print "*** Client $name: requested a job, but client is currently on hold";
 				client_onhold($socket, $name);
 			}
 			else {
