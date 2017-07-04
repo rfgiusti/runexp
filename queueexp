@@ -41,6 +41,7 @@ my $groupname = $DEFAULT_GROUPNAME;
 my $printprogress = undef;
 my $printaftermath = undef;
 my $quiet = 0;
+my $banbadrunners = 0;
 
 GetOptions(
 	'runs|r=s'	=> \$runsubpath,
@@ -57,6 +58,7 @@ GetOptions(
 	'port|p=n'	=> \$port,
 	'verbose|v'	=> sub { setverbose(1); },
 	'group|g=s'	=> \$groupname,
+	'ban'		=> \$banbadrunners,
 ) or die "Executiong terminated.\n";
 
 # Only one bare argument is accepted: the base dir
@@ -427,6 +429,9 @@ sub client_evaluate {
 	my $onhold = shift;
 	my $banned = shift;
 
+	# If banning poor runners is not enabled, then there's nothing to do here
+	return unless $banbadrunners;
+
 	# If the client is banned, then we're done here
 	return if $$banned;
 
@@ -651,6 +656,9 @@ Options:
 		  default, unless --shownames is supplied.
   -v		Print detailed information.
   -p <PORT>	Listen on port <PORT>
+  --ban		Ban runners which repeatedly fail to execute jobs, so that they
+		  don't get to waste the job list and not allowing other runners
+		  to finish their jobs. This is EXPERIMENTAL.
 
 runexp is hosted at GitHub. For source code and more information on how to use
 runexp, please visit github.com/rfgiusti/runexp
